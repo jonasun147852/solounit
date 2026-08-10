@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createAuditReport, runAudit } from "../src/audit.mjs";
 import { runDashboard } from "../src/dashboard.mjs";
 import { runDoctor } from "../src/doctor.mjs";
@@ -194,7 +195,8 @@ export async function main(args = process.argv.slice(2), runtime = {}) {
   }
 }
 
-const isEntryPoint = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isEntryPoint =
+  process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
 if (isEntryPoint) {
   process.exitCode = await main();
 }

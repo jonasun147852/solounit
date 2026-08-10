@@ -1,0 +1,13 @@
+{
+  "name": "oneco-repository",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test tools/oneco/tests/",
+    "test:oneco": "node --test tools/oneco/tests/"
+  }
+}

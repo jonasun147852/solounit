@@ -43,23 +43,34 @@ function loadAdvisories(pluginRoot) {
 }
 
 // Keyword classes let one advisory match many phrasings of the same wound.
+// `guard` (optional) must ALSO match, scoping broad words to their context —
+// first live firing (2026-08-10) hit a false positive: "permission" matched
+// harness metadata on an npm auth error. Match narrowly; silence is cheaper
+// than a wrong diagnosis (alert habituation taxes every future alert).
 const ERROR_SIGNALS = {
-  "credential-refresh-retry-loop": [/\b401\b/, /unauthorized/i, /authentication/i],
-  "gateway-retry-storm": [/\b502\b/, /\b503\b/, /bad gateway/i, /upstream/i],
-  "mcp-health-connection-failure": [/econnrefused/i, /connect(ion)? (failed|refused|error)/i, /health check/i],
-  "preview-start-permission-state": [/permission/i, /not permitted/i, /eperm/i],
+  "credential-refresh-retry-loop": { patterns: [/\b401\b/, /unauthorized/i, /authentication failed/i] },
+  "gateway-retry-storm": { patterns: [/\b502\b/, /\b503\b/, /bad gateway/i, /upstream/i] },
+  "mcp-health-connection-failure": {
+    patterns: [/econnrefused/i, /connect(ion)? (failed|refused|error)/i, /health check/i],
+  },
+  "preview-start-permission-state": {
+    patterns: [/permission/i, /not permitted/i, /eperm/i],
+    guard: /preview|browser/i,
+  },
 };
 
 function matchAdvisories(advisories, haystack, toolName) {
   const hits = [];
+  const scope = `${toolName}\n${haystack}`;
   for (const advisory of advisories) {
-    const signals = ERROR_SIGNALS[advisory.error_class] ?? [];
+    const entry = ERROR_SIGNALS[advisory.error_class] ?? { patterns: [] };
     const nameHit =
       advisory.affected?.name &&
       advisory.affected.name !== "claude-code" &&
       toolName.toLowerCase().includes(advisory.affected.name.toLowerCase());
-    const signalHit = signals.some((pattern) => pattern.test(haystack));
-    if (signalHit || (nameHit && signals.length === 0)) hits.push(advisory);
+    const guardOk = !entry.guard || entry.guard.test(scope);
+    const signalHit = guardOk && entry.patterns.some((pattern) => pattern.test(haystack));
+    if (signalHit || (nameHit && entry.patterns.length === 0)) hits.push(advisory);
   }
   return hits;
 }
@@ -85,7 +96,11 @@ function main() {
     // Unparseable event: still try a plain-text match below.
   }
   const toolName = String(event.tool_name ?? "");
-  const haystack = raw.slice(0, 20_000);
+  // Match against the failure content only — never the whole event envelope,
+  // whose harness metadata contains words like "permission" that poison
+  // keyword matching (root cause of the first live false positive).
+  const errorBody = event.tool_response ?? event.error ?? event.tool_error ?? null;
+  const haystack = (errorBody ? JSON.stringify(errorBody) : raw).slice(0, 20_000);
 
   const hits = matchAdvisories(loadAdvisories(pluginRoot), haystack, toolName);
   if (!hits.length) return;

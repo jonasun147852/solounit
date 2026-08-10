@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { readFile, rm, mkdtemp } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { readFile, rm, mkdtemp, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { main } from "../bin/oneco.mjs";
 
 function outputBuffer() {
@@ -40,6 +42,18 @@ const pricing = {
     },
   },
 };
+
+test("the CLI runs through an npm-style executable symlink", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "oneco-bin-symlink-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const executable = join(directory, "oneco");
+  await symlink(fileURLToPath(new URL("../bin/oneco.mjs", import.meta.url)), executable);
+
+  const result = spawnSync(executable, ["--help"], { encoding: "utf8" });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Usage:\n  oneco doctor/);
+});
 
 test("graft runs all mirrors, includes the audit section, and prints the closing", async (t) => {
   const homeDirectory = await mkdtemp(join(tmpdir(), "oneco-graft-audit-"));

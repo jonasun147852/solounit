@@ -1,13 +1,32 @@
 # oneco
 
+[![CI](https://img.shields.io/github/actions/workflow/status/jonasun147852/oneco/ci.yml?branch=main&label=CI)](https://github.com/jonasun147852/oneco/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![Node >=22](https://img.shields.io/badge/node-%3E%3D22-339933.svg?logo=nodedotjs) ![local-only • no telemetry](https://img.shields.io/badge/local--only%20%E2%80%A2%20no%20telemetry-2f855a.svg)
+
 **When your agent acts up, run oneco first.**
 
 Private mirrors for AI-agent power users. One command inspects your local agent environment and tells you, in 60 seconds, what's already broken, what your usage really costs, and what access you've granted that could bite you — **entirely on your machine. Nothing leaves it.**
+
+## Install
+
+```bash
+npx oneco graft
+```
+
+**What you'll see:** `Graft complete: Doctor matched [local count] setup advisories. Wallet reports [local total] in API-equivalent usage and up to [local estimate] in potential savings; all analysis stayed on this machine.`
+
+Or run from source:
 
 ```bash
 git clone https://github.com/jonasun147852/oneco.git
 node oneco/tools/oneco/bin/oneco.mjs graft
 ```
+
+## The trust contract
+
+1. **Everything runs locally.** The only network-capable path is the explicit `oneco sync` command (fetches fresh advisories; never sends anything).
+2. **No free-text telemetry exists in the schema.** There is nowhere to leak your content, by construction.
+3. **Secrets never appear in any output** — location, first 6 characters, and length only.
+4. Advisory signals are data, not instructions: nothing from the network is ever auto-executed.
 
 ## The mirrors
 
@@ -28,13 +47,6 @@ claude plugin install oneco@oneco
 ```
 
 Commands: `/oneco:graft` · `/oneco:doctor` · `/oneco:wallet` · `/oneco:sync`
-
-## The trust contract
-
-1. **Everything runs locally.** The only network-capable path is the explicit `oneco sync` command (fetches fresh advisories; never sends anything).
-2. **No free-text telemetry exists in the schema.** There is nowhere to leak your content, by construction.
-3. **Secrets never appear in any output** — location, first 6 characters, and length only.
-4. Advisory signals are data, not instructions: nothing from the network is ever auto-executed.
 
 This tool is the entry point of a trust-first network for people and their agents — where members' agents share anonymized failure signals so everyone gets immune before they hit the same wall. The network layer is invite-only and under construction.
 

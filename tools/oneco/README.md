@@ -10,22 +10,20 @@ Advisory updates are an explicit, separate action. Only `oneco sync` may use the
 
 Node.js 22 or newer is required. The package has zero runtime dependencies.
 
-## Install or run
-
-From `tools/oneco/`:
+## Run
 
 ```sh
-npm link
-oneco graft
+npx oneco graft
 ```
 
-Without linking:
+**What you'll see:** `Graft complete: Doctor matched [local count] setup advisories. Wallet reports [local total] in API-equivalent usage and up to [local estimate] in potential savings; all analysis stayed on this machine.`
+
+Or run from source:
 
 ```sh
-node bin/oneco.mjs graft
+git clone https://github.com/jonasun147852/oneco.git
+node oneco/tools/oneco/bin/oneco.mjs graft
 ```
-
-From the SoloUnit repository root, use `node tools/oneco/bin/oneco.mjs ...`.
 
 ## Commands
 
