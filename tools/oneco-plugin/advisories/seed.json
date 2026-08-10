@@ -1,0 +1,83 @@
+[
+  {
+    "id": "ONECO-2026-0001",
+    "affected": {
+      "name": "claude-code",
+      "versions": ">=2.1.197 <2.2.0"
+    },
+    "error_class": "credential-refresh-retry-loop",
+    "fingerprint_dims": [
+      "claude:*"
+    ],
+    "summary": "Claude Code can exhaust its automatic retries while its authentication state keeps returning 401 responses.",
+    "evidence": "One recorded request advanced through retry attempts 1–9 and ended with HTTP 401; no prompt content was retained.",
+    "fix_steps": [
+      "Run `claude auth login` to refresh the local credential.",
+      "Restart the affected Claude Code session instead of allowing the same request to retry again."
+    ],
+    "source": "030cec51-e01a-4f0a-b0d0-1b522525cc5c.jsonl:680-688",
+    "published": "2026-08-09",
+    "status": "draft"
+  },
+  {
+    "id": "ONECO-2026-0002",
+    "affected": {
+      "name": "claude-code",
+      "versions": ">=2.1.197 <2.2.0"
+    },
+    "error_class": "gateway-retry-storm",
+    "fingerprint_dims": [
+      "claude:*"
+    ],
+    "summary": "Repeated 502 responses can turn one Claude Code request into a costly retry storm.",
+    "evidence": "A recorded request produced four consecutive HTTP 502 retry records before changing failure class; no prompt content was retained.",
+    "fix_steps": [
+      "Pause the session after two consecutive gateway failures rather than starting another parallel retry chain.",
+      "Resume with one request after the service recovers."
+    ],
+    "source": "dde0194d-a759-4bad-afe7-41caded67744.jsonl:3880-3884",
+    "published": "2026-08-09",
+    "status": "draft"
+  },
+  {
+    "id": "ONECO-2026-0003",
+    "affected": {
+      "name": "tradingview",
+      "versions": "*"
+    },
+    "error_class": "mcp-health-connection-failure",
+    "fingerprint_dims": [
+      "mcp:tradingview"
+    ],
+    "summary": "The configured TradingView MCP server can be present while its health check repeatedly fails to connect.",
+    "evidence": "TradingView health checks returned connection-class tool errors across multiple recorded sessions; no tool payloads were retained.",
+    "fix_steps": [
+      "Restart the local TradingView MCP process and run its health check once.",
+      "If the health check still fails, verify that the configured local command exists before retrying chart tools."
+    ],
+    "source": "a30a2e91-c427-403c-b4b6-d33c1996af57.jsonl:14; 22a18eaf-2a14-416c-8ff0-d9f352c40819.jsonl:14; 3f2d7dcf-14a6-44c1-8584-3d33daec419a.jsonl:14",
+    "published": "2026-08-09",
+    "status": "draft"
+  },
+  {
+    "id": "ONECO-2026-0004",
+    "affected": {
+      "name": "claude-code",
+      "versions": ">=2.1.197 <2.2.0"
+    },
+    "error_class": "preview-start-permission-state",
+    "fingerprint_dims": [
+      "claude:*",
+      "os:darwin"
+    ],
+    "summary": "Claude Preview and Browser preview-start calls can remain stuck in a permission failure state on macOS.",
+    "evidence": "Preview-start tools returned repeated permission-class errors in separate recorded sessions; no page or project content was retained.",
+    "fix_steps": [
+      "Stop any stale local preview and start a fresh preview from the intended project directory.",
+      "Reconfirm the local preview permission before issuing more browser actions."
+    ],
+    "source": "dde0194d-a759-4bad-afe7-41caded67744.jsonl:353; c78a29a7-83ea-4416-aa7a-c284214f2992.jsonl:44-50,2964",
+    "published": "2026-08-09",
+    "status": "draft"
+  }
+]

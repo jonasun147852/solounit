@@ -1,0 +1,13 @@
+{
+  "name": "oneco",
+  "owner": {
+    "name": "oneco"
+  },
+  "plugins": [
+    {
+      "name": "oneco",
+      "source": "./tools/oneco-plugin",
+      "description": "Emergency triage for agent failures plus doctor/wallet/graft mirrors. Local-only by contract."
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "home-safe-server": {
+      "command": "local-server"
+    }
+  }
+}

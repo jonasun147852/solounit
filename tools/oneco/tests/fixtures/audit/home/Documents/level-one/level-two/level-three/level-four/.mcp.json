@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "out-of-scope-server": {
+      "command": "must-not-be-scanned"
+    }
+  }
+}

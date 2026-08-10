@@ -1,0 +1,16 @@
+{
+  "name": "oneco",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline environment and cost mirrors with explicit advisory sync",
+  "type": "module",
+  "bin": {
+    "oneco": "./bin/oneco.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}

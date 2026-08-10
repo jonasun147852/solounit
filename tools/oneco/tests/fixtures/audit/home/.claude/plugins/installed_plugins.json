@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "plugins": {
+    "fixture-risk-plugin": [
+      {
+        "scope": "user",
+        "version": "1.0.0"
+      }
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "schema": {
+    "id": "Stable advisory identifier.",
+    "kind": "One of: mcp, plugin, skill.",
+    "name_pattern": "Case-insensitive installed-name glob using * as the wildcard.",
+    "severity": "One of: critical, warning, info.",
+    "summary": "One-line explanation of the known risk.",
+    "source": "Public source identifier or URL for the intelligence.",
+    "published": "Publication date in YYYY-MM-DD format.",
+    "status": "Published entries are matched; example entries are always skipped."
+  },
+  "entries": [
+    {
+      "id": "EXAMPLE-0000",
+      "kind": "plugin",
+      "name_pattern": "example-unsafe-plugin*",
+      "severity": "critical",
+      "summary": "Schema example only; this is not a real incident.",
+      "source": "https://example.invalid/oneco-known-bad-schema",
+      "published": "2026-08-09",
+      "status": "example"
+    }
+  ]
+}

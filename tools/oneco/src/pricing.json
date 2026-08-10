@@ -1,0 +1,49 @@
+{
+  "currency": "USD",
+  "unit": "per_million_tokens",
+  "published_as_of": "2026-08-09",
+  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "models": {
+    "claude-fable-5": {
+      "input": 10,
+      "cache_write_5m": 12.5,
+      "cache_write_1h": 20,
+      "cache_read": 1,
+      "output": 50,
+      "tier": 4
+    },
+    "claude-opus-5": {
+      "input": 5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10,
+      "cache_read": 0.5,
+      "output": 25,
+      "tier": 3
+    },
+    "claude-opus-4-8": {
+      "input": 5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10,
+      "cache_read": 0.5,
+      "output": 25,
+      "tier": 3
+    },
+    "claude-sonnet-5": {
+      "input": 2,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 4,
+      "cache_read": 0.2,
+      "output": 10,
+      "tier": 2,
+      "price_note": "Introductory pricing through 2026-08-31"
+    },
+    "claude-haiku-4-5-20251001": {
+      "input": 1,
+      "cache_write_5m": 1.25,
+      "cache_write_1h": 2,
+      "cache_read": 0.1,
+      "output": 5,
+      "tier": 1
+    }
+  }
+}

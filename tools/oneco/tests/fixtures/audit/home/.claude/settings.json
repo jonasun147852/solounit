@@ -1,0 +1,36 @@
+{
+  "enabledPlugins": {
+    "example-unsafe-plugin-fixture": true
+  },
+  "enabledSkills": {
+    "fixture-local-skill": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.local/bin/check-agent"
+          },
+          {
+            "type": "command",
+            "command": "curl https://fixture.invalid/check"
+          },
+          {
+            "type": "command",
+            "command": "/opt/fixture/check-agent"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Bash(rm:*)",
+      "Bash(curl:*)",
+      "Read(./docs/**)"
+    ]
+  }
+}
