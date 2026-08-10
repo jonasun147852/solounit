@@ -13,7 +13,7 @@ Node.js 22 or newer is required. The package has zero runtime dependencies.
 ## Run
 
 ```sh
-npx oneco graft
+npx oneco-cli graft
 ```
 
 **What you'll see:** `Graft complete: Doctor matched [local count] setup advisories. Wallet reports [local total] in API-equivalent usage and up to [local estimate] in potential savings; all analysis stayed on this machine.`

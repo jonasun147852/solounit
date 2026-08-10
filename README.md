@@ -9,7 +9,7 @@ Private mirrors for AI-agent power users. One command inspects your local agent 
 ## Install
 
 ```bash
-npx oneco graft
+npx oneco-cli graft
 ```
 
 **What you'll see:** `Graft complete: Doctor matched [local count] setup advisories. Wallet reports [local total] in API-equivalent usage and up to [local estimate] in potential savings; all analysis stayed on this machine.`
