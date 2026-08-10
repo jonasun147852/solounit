@@ -1,6 +1,6 @@
 {
   "name": "oneco-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Offline environment and cost mirrors with explicit advisory sync",
   "type": "module",
   "license": "MIT",

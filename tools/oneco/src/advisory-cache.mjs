@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { t } from "./i18n.mjs";
 
 export const DEFAULT_ADVISORIES_URL = new URL("./advisories/seed.json", import.meta.url);
 
@@ -27,14 +28,14 @@ export function validateAdvisory(value, path = "advisory") {
   const affected = strictObject(input.affected, ["name", "versions"], `${path}.affected`);
   const id = stringValue(input.id, `${path}.id`, 3, 80);
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]+$/.test(id)) {
-    invalid(`${path}.id`, "must be a valid advisory identifier");
+    invalid(`${path}.id`, t("validation.identifier"));
   }
   const errorClass = stringValue(input.error_class, `${path}.error_class`, 1, 120);
   if (!/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(errorClass)) {
-    invalid(`${path}.error_class`, "must be a lowercase slug");
+    invalid(`${path}.error_class`, t("validation.lowercaseSlug"));
   }
   if (!ADVISORY_STATUSES.has(input.status)) {
-    invalid(`${path}.status`, "must be draft, published, or withdrawn");
+    invalid(`${path}.status`, t("validation.status"));
   }
 
   return {
@@ -55,8 +56,8 @@ export function validateAdvisory(value, path = "advisory") {
 }
 
 export function validateAdvisoryList(value, path = "advisories") {
-  if (!Array.isArray(value)) invalid(path, "must be an array");
-  if (value.length > 10_000) invalid(path, "must contain no more than 10000 entries");
+  if (!Array.isArray(value)) invalid(path, t("validation.array"));
+  if (value.length > 10_000) invalid(path, t("validation.maxEntries"));
   return value.map((entry, index) => validateAdvisory(entry, `${path}.${index}`));
 }
 
@@ -139,13 +140,13 @@ export function advisoryEndpointUrl(baseUrl) {
   try {
     url = new URL(baseUrl);
   } catch {
-    throw new Error("--url must be a valid http:// or https:// base URL");
+    throw new Error(t("validation.url"));
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("--url must use http:// or https://");
+    throw new Error(t("validation.urlProtocol"));
   }
   if (url.username || url.password) {
-    throw new Error("--url must not contain credentials");
+    throw new Error(t("validation.urlCredentials"));
   }
   url.search = "";
   url.hash = "";
@@ -164,49 +165,49 @@ class AdvisoryValidationError extends Error {
 
 function strictObject(value, allowedFields, path) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    invalid(path, "must be an object");
+    invalid(path, t("validation.object"));
   }
   const unknown = Object.keys(value).filter((field) => !allowedFields.includes(field));
   if (unknown.length > 0) {
-    invalid(path, `contains unsupported field(s): ${unknown.join(", ")}`);
+    invalid(path, t("validation.unsupportedFields", { fields: unknown.join(", ") }));
   }
   return value;
 }
 
 function stringValue(value, path, min, max) {
   if (typeof value !== "string" || value.length < min || value.length > max || value.trim() !== value) {
-    invalid(path, `must be a trimmed string containing ${min}-${max} characters`);
+    invalid(path, t("validation.trimmedString", { min, max }));
   }
   return value;
 }
 
 function stringArray(value, path, minItems, maxItems, maxLength) {
   if (!Array.isArray(value) || value.length < minItems || value.length > maxItems) {
-    invalid(path, `must contain ${minItems}-${maxItems} items`);
+    invalid(path, t("validation.itemRange", { min: minItems, max: maxItems }));
   }
   return value.map((item, index) => stringValue(item, `${path}.${index}`, 1, maxLength));
 }
 
 function calendarDate(value, path) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    invalid(path, "must use YYYY-MM-DD format");
+    invalid(path, t("validation.dateFormat"));
   }
   const parsed = new Date(`${value}T00:00:00.000Z`);
   if (Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) {
-    invalid(path, "must be a valid calendar date");
+    invalid(path, t("validation.validDate"));
   }
   return value;
 }
 
 function isoTimestamp(value, path) {
-  if (typeof value !== "string") invalid(path, "must be an ISO-8601 timestamp");
+  if (typeof value !== "string") invalid(path, t("validation.timestamp"));
   const parsed = new Date(value);
   if (Number.isNaN(parsed.valueOf()) || parsed.toISOString() !== value) {
-    invalid(path, "must be an ISO-8601 timestamp");
+    invalid(path, t("validation.timestamp"));
   }
   return value;
 }
 
 function invalid(path, message) {
-  throw new AdvisoryValidationError(`Invalid advisory data at ${path}: ${message}.`);
+  throw new AdvisoryValidationError(t("validation.invalidData", { path, message }));
 }

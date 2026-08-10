@@ -89,16 +89,54 @@ test("graft runs all mirrors, includes the audit section, and prints the closing
   });
 
   assert.equal(exitCode, 0);
-  assert.match(output.value, /Doctor（修理镜）/);
-  assert.match(output.value, /Wallet（钱包镜）/);
-  assert.match(output.value, /Audit（安全镜） — 0 critical, 0 warning, 0 info\. No findings\./);
-  assert.ok(output.value.indexOf("Graft complete:") < output.value.lastIndexOf("Audit（安全镜）"));
+  assert.match(output.value, /^Doctor$/m);
+  assert.match(output.value, /^Wallet$/m);
+  assert.match(output.value, /Audit — 0 critical, 0 warning, 0 info\. No findings\./);
+  assert.ok(output.value.indexOf("Graft complete:") < output.value.lastIndexOf("Audit —"));
   assert.match(
     output.value,
     /Graft complete: Doctor matched 0 local setup advisories\. Wallet reports \$0\.00 in API-equivalent usage and up to \$0\.00 in potential savings if optimized;/,
   );
   assert.match(output.value, /Run `oneco dashboard --open` to see all of this as a visual panel\./);
+  assert.doesNotMatch(output.value, /[\u3400-\u9fff]/u);
   assert.equal(errorOutput.value, "");
+});
+
+test("graft localizes every mirror name when Chinese is selected", async (t) => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "oneco-graft-zh-"));
+  t.after(() => rm(homeDirectory, { recursive: true, force: true }));
+  const output = outputBuffer();
+  const exitCode = await main(["graft", "--days", "7", "--lang", "zh"], {
+    output,
+    doctorOptions: {
+      fingerprint,
+      advisories: [],
+      now: new Date("2026-08-09T12:00:00.000Z"),
+    },
+    walletOptions: {
+      logs: {
+        turns: [],
+        retries: [],
+        diagnostics: {
+          files_scanned: 0,
+          malformed_lines: 0,
+          unreadable_files: 0,
+          unreadable_directories: 0,
+        },
+      },
+      pricing,
+      now: new Date("2026-08-09T12:00:00.000Z"),
+    },
+    auditOptions: {
+      homeDirectory,
+      now: new Date("2026-08-09T12:00:00.000Z"),
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match(output.value, /修理镜 · Doctor/);
+  assert.match(output.value, /钱包镜 · Wallet/);
+  assert.match(output.value, /安全镜 · Audit/);
 });
 
 test("dashboard accepts a custom output path and runs all implemented mirrors", async (t) => {
@@ -140,10 +178,11 @@ test("dashboard accepts a custom output path and runs all implemented mirrors", 
   assert.equal(exitCode, 0);
   assert.equal(output.value, `Dashboard written to ${destination}\n`);
   const html = await readFile(destination, "utf8");
-  assert.match(html, /Doctor（修理镜）/);
-  assert.match(html, /Wallet（钱包镜）/);
-  assert.match(html, /Audit（安全镜）/);
-  assert.match(html, /Cognition（认知镜）/);
+  assert.match(html, /<html lang="en">/);
+  assert.match(html, />Doctor</);
+  assert.match(html, />Wallet</);
+  assert.match(html, />Audit</);
+  assert.match(html, />Cognition</);
 });
 
 test("doctor remains a report with exit status zero", async () => {

@@ -3,14 +3,14 @@ import {
   parseAdvisoryResponse,
   writeAdvisoryCache,
 } from "./advisory-cache.mjs";
+import { t } from "./i18n.mjs";
 
 export async function syncAdvisories(options = {}) {
+  const locale = options.locale || "en";
   const environment = options.environment ?? process.env;
   const baseUrl = options.url || environment.ONECO_HUB_URL;
   if (!baseUrl) {
-    throw new Error(
-      "No advisory hub URL is configured. Run `oneco sync --url http://localhost:8787` or set ONECO_HUB_URL.",
-    );
+    throw new Error(t("sync.noUrl", { locale }));
   }
 
   const endpoint = advisoryEndpointUrl(baseUrl);
@@ -19,14 +19,14 @@ export async function syncAdvisories(options = {}) {
     headers: { accept: "application/json" },
   });
   if (response?.ok === false) {
-    throw new Error(`Advisory sync failed with HTTP ${response.status}.`);
+    throw new Error(t("sync.httpFailure", { locale, status: response.status }));
   }
 
   let payload;
   try {
     payload = typeof response?.json === "function" ? await response.json() : response;
   } catch {
-    throw new Error("Advisory sync returned invalid JSON.");
+    throw new Error(t("sync.invalidJson", { locale }));
   }
   const advisories = parseAdvisoryResponse(payload);
   const cache = await (options.cacheWriter || writeAdvisoryCache)(advisories, {
@@ -46,8 +46,11 @@ export async function syncAdvisories(options = {}) {
 export async function runSync(options = {}) {
   const result = await syncAdvisories(options);
   const output = options.output || process.stdout;
-  output.write(
-    `Fetched ${result.fetched} advisor${result.fetched === 1 ? "y" : "ies"}. Advisory cache last updated ${result.updatedAt}.\n`,
-  );
+  const locale = options.locale || "en";
+  output.write(`${t(result.fetched === 1 ? "sync.complete.one" : "sync.complete.other", {
+    locale,
+    count: result.fetched,
+    updatedAt: result.updatedAt,
+  })}\n`);
   return result;
 }

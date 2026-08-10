@@ -1,6 +1,7 @@
 import { lstat, readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
+import { setLocale, t } from "./i18n.mjs";
 
 const DEFAULT_REGISTRY_URL = new URL("./security/known-bad-seed.json", import.meta.url);
 const SEVERITIES = ["critical", "warning", "info"];
@@ -28,73 +29,73 @@ const NETWORK_BINARIES = new Set([
 
 const CREDENTIAL_PATTERNS = [
   {
-    kind: "Anthropic key",
+    kindKey: "audit.kind.anthropic",
     expression: /\bsk-ant-[A-Za-z0-9_-]{6,}\b/g,
   },
   {
-    kind: "OpenAI project key",
+    kindKey: "audit.kind.openai",
     expression: /\bsk-proj-[A-Za-z0-9_-]{6,}\b/g,
   },
   {
-    kind: "AWS access key",
+    kindKey: "audit.kind.aws",
     expression: /\bAKIA[0-9A-Z]{16}\b/g,
   },
   {
-    kind: "GitHub personal access token",
+    kindKey: "audit.kind.github",
     expression: /\bghp_[A-Za-z0-9]{8,}\b/g,
   },
   {
-    kind: "Slack token",
+    kindKey: "audit.kind.slack",
     expression: /\bxox[bp]-[A-Za-z0-9-]{8,}\b/g,
   },
   {
-    kind: "Bearer token",
+    kindKey: "audit.kind.bearer",
     expression: /\bBearer[ \t]+([A-Za-z0-9._~+/=-]{8,})/gi,
     valueGroup: 1,
   },
 ];
 
-function credentialPreview(value) {
-  const prefix = value.length > 6 ? `${value.slice(0, 6)}…` : "short value";
-  return `${prefix} (length ${value.length})`;
+function credentialPreview(value, locale) {
+  const prefix = value.length > 6 ? `${value.slice(0, 6)}…` : t("audit.shortValue", { locale });
+  return t("audit.credentialLength", { locale, prefix, length: value.length });
 }
 
-function replacementForCredential(match, pattern) {
+function replacementForCredential(match, pattern, locale) {
   const value = pattern.valueGroup ? match[pattern.valueGroup] : match[0];
-  const replacement = `[MASKED ${credentialPreview(value)}]`;
+  const replacement = `[MASKED ${credentialPreview(value, locale)}]`;
   if (!pattern.valueGroup) return replacement;
   return match[0].replace(value, replacement);
 }
 
-export function redactCredentialValues(value) {
+export function redactCredentialValues(value, locale) {
   let redacted = String(value ?? "");
   redacted = redacted.replace(
     /\b((?:api[_-]?key|secret|token|password|credential|authorization)\s*(?:=|:)\s*)(["'])(?!\[MASKED\b)([^"'\r\n]+)\2/gi,
     (_match, prefix, quote, credential) =>
-      `${prefix}${quote}[MASKED ${credentialPreview(credential)}]${quote}`,
+      `${prefix}${quote}[MASKED ${credentialPreview(credential, locale)}]${quote}`,
   );
   redacted = redacted.replace(
     /\b(authorization\s*(?:=|:)\s*)((?:Bearer|Basic)\s+)(?!\[MASKED\b)([^\s"',;}]+)/gi,
     (_match, prefix, scheme, credential) =>
-      `${prefix}${scheme}[MASKED ${credentialPreview(credential)}]`,
+      `${prefix}${scheme}[MASKED ${credentialPreview(credential, locale)}]`,
   );
   redacted = redacted.replace(
     /\b(authorization\s*(?:=|:)\s*)(?!(?:Bearer|Basic)\b|\[MASKED\b)([^\s"',;}]+)/gi,
-    (_match, prefix, credential) => `${prefix}[MASKED ${credentialPreview(credential)}]`,
+    (_match, prefix, credential) => `${prefix}[MASKED ${credentialPreview(credential, locale)}]`,
   );
   redacted = redacted.replace(
     /\b((?:api[_-]?key|secret|token|password|credential)\s*(?:=|:)\s*)(?!\[MASKED\b)([^\s"',;}]+)/gi,
-    (_match, prefix, credential) => `${prefix}[MASKED ${credentialPreview(credential)}]`,
+    (_match, prefix, credential) => `${prefix}[MASKED ${credentialPreview(credential, locale)}]`,
   );
   redacted = redacted.replace(
     /(--(?:api[_-]?key|secret|token|password|credential)(?:=|\s+))(?!\[MASKED\b)([^\s"',;}]+)/gi,
-    (_match, prefix, credential) => `${prefix}[MASKED ${credentialPreview(credential)}]`,
+    (_match, prefix, credential) => `${prefix}[MASKED ${credentialPreview(credential, locale)}]`,
   );
   for (const pattern of CREDENTIAL_PATTERNS) {
     const expression = new RegExp(pattern.expression.source, pattern.expression.flags);
     redacted = redacted.replace(expression, (...arguments_) => {
       const captures = arguments_.slice(0, -2);
-      return replacementForCredential(captures, pattern);
+      return replacementForCredential(captures, pattern, locale);
     });
   }
   return redacted;
@@ -131,10 +132,10 @@ function scanErrorFinding(filePath, homeDirectory, reason) {
   return finding(
     "info",
     "scan.unreadable",
-    "A configured audit location could not be inspected",
+    t("audit.scanWhat"),
     displayPath(filePath, homeDirectory),
     reason,
-    "Check that the path is a regular readable file and retry the audit.",
+    t("audit.scanFix"),
   );
 }
 
@@ -160,14 +161,14 @@ async function readLocalFile(filePath, homeDirectory, findings) {
       scanErrorFinding(
         filePath,
         homeDirectory,
-        "Symlinks are not followed so the scan cannot escape its documented locations.",
+        t("audit.symlinkReason"),
       ),
     );
     return null;
   }
   if (checked.state !== "file") {
     findings.push(
-      scanErrorFinding(filePath, homeDirectory, "The location is not a readable regular file."),
+      scanErrorFinding(filePath, homeDirectory, t("audit.notReadableReason")),
     );
     return null;
   }
@@ -176,7 +177,7 @@ async function readLocalFile(filePath, homeDirectory, findings) {
     return { contents: await readFile(filePath, "utf8"), status: checked.status };
   } catch {
     findings.push(
-      scanErrorFinding(filePath, homeDirectory, "The regular file could not be read."),
+      scanErrorFinding(filePath, homeDirectory, t("audit.readFailedReason")),
     );
     return null;
   }
@@ -192,10 +193,10 @@ async function readJsonFile(filePath, homeDirectory, findings) {
       finding(
         "info",
         "scan.invalid-json",
-        "A configuration file contains invalid JSON",
+        t("audit.invalidJsonWhat"),
         displayPath(filePath, homeDirectory),
-        "Malformed configuration cannot be checked for risky access.",
-        "Repair the JSON and run oneco audit again.",
+        t("audit.invalidJsonWhy"),
+        t("audit.invalidJsonFix"),
       ),
     );
     return null;
@@ -218,7 +219,7 @@ async function discoverProjectConfiguration(documentsDirectory, homeDirectory, f
           scanErrorFinding(
             directory,
             homeDirectory,
-            "A project directory could not be listed during the bounded scan.",
+            t("audit.projectListReason"),
           ),
         );
       }
@@ -360,21 +361,23 @@ function hookFindings(config, source, homeDirectory) {
     const unsafe = networkBinaries.length > 0 || outsidePaths.length > 0;
     const reasons = [];
     if (networkBinaries.length > 0) {
-      reasons.push(`it invokes network-capable executable(s): ${networkBinaries.join(", ")}`);
+      reasons.push(
+        t("audit.hookNetworkReason", { executables: networkBinaries.join(", ") }),
+      );
     }
-    if (outsidePaths.length > 0) reasons.push("it references a path outside the user home");
+    if (outsidePaths.length > 0) reasons.push(t("audit.hookOutsideReason"));
     findings.push(
       finding(
         unsafe ? "critical" : "info",
         unsafe ? "hook.risky" : "hook.configured",
-        `Hook command: ${hook.command}`,
+        t("audit.hookWhat", { command: hook.command }),
         `${source}#${hook.location}`,
         unsafe
-          ? `This hook runs automatically and ${reasons.join("; ")}.`
-          : "Hooks run automatically with the agent's local access.",
+          ? t("audit.hookRiskyWhy", { reasons: reasons.join("; ") })
+          : t("audit.hookSafeWhy"),
         unsafe
-          ? "Disable the hook until its command and destination are explicitly trusted."
-          : "Keep the hook only while its command and target remain expected.",
+          ? t("audit.hookRiskyFix")
+          : t("audit.hookSafeFix"),
       ),
     );
   }
@@ -384,17 +387,17 @@ function hookFindings(config, source, homeDirectory) {
 function broadPermission(permission) {
   const value = String(permission).trim();
   if (/^Bash\(\s*\*\s*\)$/i.test(value)) {
-    return { severity: "critical", reason: "it allows every shell command" };
+    return { severity: "critical", reason: t("audit.permissionShellReason") };
   }
   if (/^Bash\(\s*rm(?::|\s).*\*.*\)$/i.test(value)) {
-    return { severity: "warning", reason: "it broadly allows destructive file removal" };
+    return { severity: "warning", reason: t("audit.permissionRemovalReason") };
   }
   const bashNetwork = value.match(/^Bash\(\s*([A-Za-z0-9_-]+)(?::|\s).*\*.*\)$/i);
   if (bashNetwork && NETWORK_BINARIES.has(bashNetwork[1].toLowerCase())) {
-    return { severity: "critical", reason: "it broadly allows a network-capable command" };
+    return { severity: "critical", reason: t("audit.permissionNetworkCommandReason") };
   }
   if (/^(?:WebFetch|WebSearch)\(\s*\*\s*\)$/i.test(value)) {
-    return { severity: "critical", reason: "it grants wildcard network access" };
+    return { severity: "critical", reason: t("audit.permissionWildcardNetworkReason") };
   }
   return null;
 }
@@ -411,10 +414,10 @@ function permissionFindings(config, source) {
       finding(
         broad.severity,
         "permission.broad",
-        `Broad permission allowlist entry: ${permission}`,
+        t("audit.permissionWhat", { permission }),
         `${source}#permissions.allow[${index}]`,
-        `The allowlist bypasses per-command approval because ${broad.reason}.`,
-        "Replace the wildcard with the smallest exact command pattern that is required.",
+        t("audit.permissionWhy", { reason: broad.reason }),
+        t("audit.permissionFix"),
       ),
     );
   });
@@ -444,10 +447,13 @@ function credentialFindings(contents, source) {
         finding(
           "critical",
           "credential.plaintext",
-          `Plaintext ${pattern.kind} — ${credentialPreview(value)}`,
+          t("audit.credentialWhat", {
+            kind: t(pattern.kindKey),
+            preview: credentialPreview(value),
+          }),
           `${source}:${lineNumberAt(contents, offset)}`,
-          "A local process or copied configuration could expose this credential.",
-          "Revoke and rotate it, then store the replacement in a scoped secret manager.",
+          t("audit.credentialWhy"),
+          t("audit.credentialFix"),
         ),
       );
     }
@@ -458,14 +464,14 @@ function credentialFindings(contents, source) {
 function permissionModeFinding(filePath, status, homeDirectory) {
   const exposedBits = status.mode & 0o044;
   if (exposedBits === 0) return null;
-  const audience = status.mode & 0o004 ? "world-readable" : "group-readable";
+  const audience = status.mode & 0o004 ? t("audit.worldReadable") : t("audit.groupReadable");
   return finding(
     "warning",
     "credential.permissions",
-    `Credential candidate file is ${audience}`,
+    t("audit.modeWhat", { audience }),
     displayPath(filePath, homeDirectory),
-    "Other local accounts may be able to read credentials stored in this file.",
-    `Restrict the mode to the owner only, for example: chmod 600 ${displayPath(filePath, homeDirectory)}`,
+    t("audit.modeWhy"),
+    t("audit.modeFix", { path: displayPath(filePath, homeDirectory) }),
   );
 }
 
@@ -487,7 +493,7 @@ async function loadKnownBadEntries(options, homeDirectory, findings) {
       scanErrorFinding(
         registryPath instanceof URL ? registryPath.pathname : registryPath,
         homeDirectory,
-        "The bundled known-bad registry could not be loaded.",
+        t("audit.registryLoadReason"),
       ),
     );
     return [];
@@ -509,10 +515,14 @@ function knownBadFindings(inventories, registryEntries) {
         finding(
           entry.severity,
           "registry.known-bad",
-          `Known-bad ${inventory.kind} matched ${entry.id}: ${inventory.name}`,
+          t("audit.knownBadWhat", {
+            kind: inventory.kind,
+            id: entry.id,
+            name: inventory.name,
+          }),
           [...inventory.sources].sort().join(", "),
           entry.summary,
-          `Disable or remove it, then review the registry source: ${entry.source}`,
+          t("audit.knownBadFix", { source: entry.source }),
         ),
       );
     }
@@ -525,10 +535,10 @@ function inventoryFindings(inventories) {
     finding(
       "info",
       `inventory.${inventory.kind}`,
-      `Configured ${inventory.kind}: ${inventory.name}`,
+      t("audit.inventoryWhat", { kind: inventory.kind, name: inventory.name }),
       [...inventory.sources].sort().join(", "),
-      "Installed agent integrations inherit access from their local configuration.",
-      "Remove or disable it if the name, source, or granted access is unexpected.",
+      t("audit.inventoryWhy"),
+      t("audit.inventoryFix"),
     ),
   );
 }
@@ -550,6 +560,8 @@ function sortFindings(findings) {
 }
 
 export async function createAuditReport(options = {}) {
+  const locale = options.locale || "en";
+  setLocale(locale);
   const startedAt = process.hrtime.bigint();
   const homeDirectory = resolve(options.homeDirectory || homedir());
   const documentsDirectory = resolve(
@@ -609,6 +621,7 @@ export async function createAuditReport(options = {}) {
 
   return {
     mirror: "audit",
+    locale,
     generated_at: now.toISOString(),
     privacy: "local-only",
     duration_ms: Math.round(elapsed * 100) / 100,
@@ -624,44 +637,52 @@ export async function createAuditReport(options = {}) {
   };
 }
 
-export function renderAudit(report) {
+export function renderAudit(report, locale = report?.locale || "en") {
   const lines = [
-    "Audit（安全镜）",
-    "Local-only access report — no network requests were made.",
+    t("mirror.audit", { locale }),
+    t("audit.localReport", { locale }),
   ];
   for (const severity of SEVERITIES) {
     const matches = report.findings.filter((entry) => entry.severity === severity);
-    lines.push("", `${severity.toUpperCase()} (${matches.length})`);
-    if (matches.length === 0) lines.push("  None.");
+    lines.push("", `${t(`audit.severity.${severity}`, { locale })} (${matches.length})`);
+    if (matches.length === 0) lines.push(`  ${t("audit.none", { locale })}`);
     for (const entry of matches) {
       lines.push(
         `  [${entry.id}] ${entry.what}`,
-        `    Where: ${entry.where}`,
-        `    Why: ${entry.why}`,
-        `    Fix: ${entry.fix}`,
+        `    ${t("audit.where", { locale, where: entry.where })}`,
+        `    ${t("audit.why", { locale, why: entry.why })}`,
+        `    ${t("audit.fix", { locale, fix: entry.fix })}`,
       );
     }
   }
   lines.push(
     "",
-    `${report.summary.critical} critical · ${report.summary.warning} warning · ${report.summary.info} info · ${report.summary.total} total — everything stayed on this machine.`,
+    t("audit.summary", {
+      locale,
+      critical: report.summary.critical,
+      warning: report.summary.warning,
+      info: report.summary.info,
+      total: report.summary.total,
+    }),
   );
-  return redactCredentialValues(lines.join("\n"));
+  return redactCredentialValues(lines.join("\n"), locale);
 }
 
-function failedAuditReport(now) {
+function failedAuditReport(now, locale = "en") {
+  setLocale(locale);
   const findings = [
     finding(
       "warning",
       "audit.incomplete",
-      "The local audit could not be completed",
-      "documented local audit locations",
-      "An internal failure prevented a complete access review.",
-      "Retry the command; if it repeats, inspect the local oneco installation.",
+      t("audit.failedWhat", { locale }),
+      t("audit.failedWhere", { locale }),
+      t("audit.failedWhy", { locale }),
+      t("audit.failedFix", { locale }),
     ),
   ];
   return {
     mirror: "audit",
+    locale,
     generated_at: now.toISOString(),
     privacy: "local-only",
     duration_ms: 0,
@@ -673,16 +694,18 @@ function failedAuditReport(now) {
 
 export async function runAudit(options = {}) {
   const output = options.output || process.stdout;
+  const locale = options.locale || "en";
+  setLocale(locale);
   let report;
   try {
     report = await createAuditReport(options);
   } catch {
-    report = failedAuditReport(options.now || new Date());
+    report = failedAuditReport(options.now || new Date(), locale);
   }
   const rendered = options.json
     ? JSON.stringify(report, null, 2)
-    : renderAudit(report);
-  output.write(`${redactCredentialValues(rendered)}\n`);
+    : renderAudit(report, locale);
+  output.write(`${redactCredentialValues(rendered, locale)}\n`);
   return report;
 }
 

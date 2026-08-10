@@ -5,32 +5,11 @@ import { fileURLToPath } from "node:url";
 import { createAuditReport, runAudit } from "../src/audit.mjs";
 import { runDashboard } from "../src/dashboard.mjs";
 import { runDoctor } from "../src/doctor.mjs";
+import { resolveLocale, setLocale, stripLocaleArgs, t } from "../src/i18n.mjs";
 import { runSync } from "../src/sync.mjs";
 import { runWallet } from "../src/wallet.mjs";
 
-const HELP = `oneco — private mirrors for agent power-users
-
-Usage:
-  oneco doctor [--json]
-  oneco audit [--json]
-  oneco wallet [--days 30] [--json]
-  oneco wallet [--days 30] --html [path]
-  oneco dashboard [--out path] [--open]
-  oneco graft [--days 30]
-  oneco sync [--url http://localhost:8787]
-
-Commands:
-  doctor  Match this environment against bundled and cached advisories offline.
-  audit   Review local agent access, hooks, credentials, and permissions offline.
-  wallet  Report API-equivalent Claude Code usage and potential savings from local logs.
-  dashboard  Render all local mirrors as a self-contained visual health panel.
-  graft   Run doctor and wallet together for the first-run experience.
-  sync    Explicitly fetch advisories and update the local cache.
-
-Trust: only an explicit sync command can use the network. Doctor, audit, wallet, dashboard, and graft stay offline.
-`;
-
-function parseOptions(args, allowed) {
+function parseOptions(args, allowed, locale = "en") {
   const options = { json: false, html: null, days: 30, url: null, out: null, open: false };
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -59,47 +38,47 @@ function parseOptions(args, allowed) {
     }
     if (argument.startsWith("--html=") && allowed.has("html")) {
       options.html = argument.slice("--html=".length);
-      if (!options.html) throw new Error("--html path cannot be empty");
+      if (!options.html) throw new Error(t("cli.htmlPathEmpty", { locale }));
       continue;
     }
     if (argument === "--url" && allowed.has("url")) {
       index += 1;
       if (!args[index] || args[index].startsWith("--")) {
-        throw new Error("--url requires a value");
+        throw new Error(t("cli.urlRequired", { locale }));
       }
       options.url = args[index];
       continue;
     }
     if (argument.startsWith("--url=") && allowed.has("url")) {
       options.url = argument.slice("--url=".length);
-      if (!options.url) throw new Error("--url requires a value");
+      if (!options.url) throw new Error(t("cli.urlRequired", { locale }));
       continue;
     }
     if (argument === "--out" && allowed.has("out")) {
       index += 1;
       if (!args[index] || args[index].startsWith("--")) {
-        throw new Error("--out requires a value");
+        throw new Error(t("cli.outRequired", { locale }));
       }
       options.out = args[index];
       continue;
     }
     if (argument.startsWith("--out=") && allowed.has("out")) {
       options.out = argument.slice("--out=".length);
-      if (!options.out) throw new Error("--out requires a value");
+      if (!options.out) throw new Error(t("cli.outRequired", { locale }));
       continue;
     }
     if (argument === "--open" && allowed.has("open")) {
       options.open = true;
       continue;
     }
-    throw new Error(`Unknown option: ${argument}`);
+    throw new Error(t("cli.unknownOption", { locale, option: argument }));
   }
 
   if (!Number.isInteger(options.days) || options.days < 1 || options.days > 3_650) {
-    throw new Error("--days must be an integer from 1 to 3650");
+    throw new Error(t("cli.daysRange", { locale }));
   }
   if (options.json && options.html) {
-    throw new Error("--json and --html cannot be used together");
+    throw new Error(t("cli.outputConflict", { locale }));
   }
   return options;
 }
@@ -107,40 +86,53 @@ function parseOptions(args, allowed) {
 export async function main(args = process.argv.slice(2), runtime = {}) {
   const output = runtime.output || process.stdout;
   const errorOutput = runtime.errorOutput || process.stderr;
-  const [command = "help", ...commandArgs] = args;
+  const environment = runtime.environment || runtime.env || process.env;
+  let locale;
+
+  try {
+    locale = resolveLocale(args, environment);
+  } catch (error) {
+    locale = resolveLocale([], environment);
+    setLocale(locale);
+    errorOutput.write(`${error.message}\n\n${t("help.text", { locale })}`);
+    return 1;
+  }
+  setLocale(locale);
+  const [command = "help", ...commandArgs] = stripLocaleArgs(args);
 
   try {
     if (command === "help" || command === "--help" || command === "-h") {
-      output.write(HELP);
+      output.write(t("help.text", { locale }));
       return 0;
     }
 
     if (command === "doctor") {
-      const options = parseOptions(commandArgs, new Set(["json"]));
-      await runDoctor({ ...runtime.doctorOptions, json: options.json, output });
+      const options = parseOptions(commandArgs, new Set(["json"]), locale);
+      await runDoctor({ ...runtime.doctorOptions, json: options.json, output, locale });
       return 0;
     }
 
     if (command === "audit") {
-      const options = parseOptions(commandArgs, new Set(["json"]));
-      await runAudit({ ...runtime.auditOptions, json: options.json, output });
+      const options = parseOptions(commandArgs, new Set(["json"]), locale);
+      await runAudit({ ...runtime.auditOptions, json: options.json, output, locale });
       return 0;
     }
 
     if (command === "wallet") {
-      const options = parseOptions(commandArgs, new Set(["json", "html", "days"]));
+      const options = parseOptions(commandArgs, new Set(["json", "html", "days"]), locale);
       await runWallet({
         ...runtime.walletOptions,
         json: options.json,
         html: options.html,
         days: options.days,
         output,
+        locale,
       });
       return 0;
     }
 
     if (command === "dashboard") {
-      const options = parseOptions(commandArgs, new Set(["out", "open"]));
+      const options = parseOptions(commandArgs, new Set(["out", "open"]), locale);
       await runDashboard({
         ...runtime.dashboardOptions,
         doctorOptions: runtime.dashboardOptions?.doctorOptions || runtime.doctorOptions,
@@ -149,48 +141,70 @@ export async function main(args = process.argv.slice(2), runtime = {}) {
         out: options.out,
         open: options.open,
         output,
+        locale,
       });
       return 0;
     }
 
     if (command === "graft") {
-      const options = parseOptions(commandArgs, new Set(["days"]));
-      const doctor = await runDoctor({ ...runtime.doctorOptions, output });
+      const options = parseOptions(commandArgs, new Set(["days"]), locale);
+      const doctor = await runDoctor({ ...runtime.doctorOptions, output, locale });
       output.write("\n");
       const wallet = await runWallet({
         ...runtime.walletOptions,
         days: options.days,
         output,
+        locale,
       });
-      const audit = await createAuditReport(runtime.auditOptions);
+      const audit = await createAuditReport({ ...runtime.auditOptions, locale });
       const matched = doctor.summary?.matched || 0;
       const spend = wallet.summary?.total_spend_usd || 0;
       const waste = wallet.summary?.estimated_potential_waste_usd || 0;
       const auditTotal = audit.summary?.total || 0;
-      output.write(
-        `\nGraft complete: Doctor matched ${matched} local setup advisor${matched === 1 ? "y" : "ies"}. Wallet reports $${spend.toFixed(2)} in API-equivalent usage and up to $${waste.toFixed(2)} in potential savings if optimized; all analysis stayed on this machine.\n`,
+      const advisoryLabel = t(
+        matched === 1 ? "graft.advisory.one" : "graft.advisory.other",
+        { locale },
       );
       output.write(
-        `\nAudit（安全镜） — ${audit.summary.critical} critical, ${audit.summary.warning} warning, ${audit.summary.info} info.${auditTotal > 0 ? " Run oneco audit for detail." : " No findings."}\n`,
+        `\n${t("graft.complete", {
+          locale,
+          matched,
+          advisoryLabel,
+          spend: `$${spend.toFixed(2)}`,
+          waste: `$${waste.toFixed(2)}`,
+        })}\n`,
       );
-      output.write('\nRun `oneco dashboard --open` to see all of this as a visual panel.\n');
+      output.write(
+        `\n${t("graft.auditSummary", {
+          locale,
+          mirror: t("mirror.audit", { locale }),
+          critical: audit.summary.critical,
+          warning: audit.summary.warning,
+          info: audit.summary.info,
+          ending: t(auditTotal > 0 ? "graft.auditDetails" : "graft.auditClear", { locale }),
+        })}\n`,
+      );
+      output.write(`\n${t("graft.dashboardPrompt", { locale })}\n`);
       return 0;
     }
 
     if (command === "sync") {
-      const options = parseOptions(commandArgs, new Set(["url"]));
+      const options = parseOptions(commandArgs, new Set(["url"]), locale);
       await runSync({
         ...runtime.syncOptions,
         url: options.url ?? runtime.syncOptions?.url,
         output,
+        locale,
       });
       return 0;
     }
 
-    errorOutput.write(`Unknown command: ${command}\n\n${HELP}`);
+    errorOutput.write(
+      `${t("cli.unknownCommand", { locale, command })}\n\n${t("help.text", { locale })}`,
+    );
     return 1;
   } catch (error) {
-    errorOutput.write(`${error.message}\n\n${HELP}`);
+    errorOutput.write(`${error.message}\n\n${t("help.text", { locale })}`);
     return 1;
   }
 }

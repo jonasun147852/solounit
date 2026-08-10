@@ -7,17 +7,19 @@ import {
   parseClaudeLogs,
   totalTokenCount,
 } from "./claude-logs.mjs";
+import { t } from "./i18n.mjs";
 
 const DEFAULT_PRICING_URL = new URL("./pricing.json", import.meta.url);
 const MILLION = 1_000_000;
 const RETRY_WINDOW_MS = 2 * 60 * 1_000;
 const RETRY_COST_LOOKAROUND_MS = 5 * 60 * 1_000;
-const WALLET_FRAMING = Object.freeze({
-  usage_label: "API-equivalent usage",
-  usage_explainer:
-    "What this usage would cost at API list prices — subscription users: this is what your plan absorbed, not your bill.",
-  savings_label: "Potential savings if optimized",
-});
+function walletFraming(locale) {
+  return {
+    usage_label: t("wallet.usageLabel", { locale }),
+    usage_explainer: t("wallet.usageExplainer", { locale }),
+    savings_label: t("wallet.savingsLabel", { locale }),
+  };
+}
 
 function round(value, digits = 6) {
   const scale = 10 ** digits;
@@ -295,7 +297,7 @@ export function estimateTierMismatch(turns, pricing) {
   };
 }
 
-function wasteBuckets(logs, pricing) {
+function wasteBuckets(logs, pricing, locale = "en") {
   const retry = detectRetryStorms(logs.retries, logs.turns, pricing);
   const context = estimateContextBloat(logs.turns, pricing);
   const tier = estimateTierMismatch(logs.turns, pricing);
@@ -303,29 +305,43 @@ function wasteBuckets(logs, pricing) {
   return [
     {
       key: "retry_storms",
-      label: "Retry storms (estimate)",
+      label: t("wallet.retryLabel", { locale }),
       estimated_usd: round(retry.estimated_usd),
-      evidence: `${retry.storms.length} burst(s), ${retry.attempts} retry record(s) within two-minute windows.`,
-      fix: "Pause after repeated API errors and resume with one request after recovery.",
+      evidence: t("wallet.retryEvidence", {
+        locale,
+        bursts: retry.storms.length,
+        attempts: retry.attempts,
+      }),
+      fix: t("wallet.retryFix", { locale }),
     },
     {
       key: "context_bloat",
-      label: "Context bloat (estimate)",
+      label: t("wallet.contextLabel", { locale }),
       estimated_usd: round(context.estimated_usd),
-      evidence: `${context.sessions} top-decile session(s); median ${Math.round(context.median_tokens).toLocaleString("en-US")} vs P90 ${Math.round(context.p90_tokens).toLocaleString("en-US")} input tokens/turn.`,
-      fix: "Start a fresh session or compact before repeatedly carrying oversized context.",
+      evidence: t("wallet.contextEvidence", {
+        locale,
+        sessions: context.sessions,
+        median: Math.round(context.median_tokens).toLocaleString("en-US"),
+        p90: Math.round(context.p90_tokens).toLocaleString("en-US"),
+      }),
+      fix: t("wallet.contextFix", { locale }),
     },
     {
       key: "tier_mismatch",
-      label: "Tier mismatch (estimate)",
+      label: t("wallet.tierLabel", { locale }),
       estimated_usd: round(tier.estimated_usd),
-      evidence: `${tier.turns} short tool-call turn(s) in ${tier.sessions} long session(s) used the largest priced tier.`,
-      fix: "Route repetitive, low-output tool work to the next smaller model tier.",
+      evidence: t("wallet.tierEvidence", {
+        locale,
+        turns: tier.turns,
+        sessions: tier.sessions,
+      }),
+      fix: t("wallet.tierFix", { locale }),
     },
   ].sort((left, right) => right.estimated_usd - left.estimated_usd);
 }
 
 export async function createWalletReport(options = {}) {
+  const locale = options.locale || "en";
   const now = options.now || new Date();
   const days = options.days || 30;
   const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1_000);
@@ -338,14 +354,15 @@ export async function createWalletReport(options = {}) {
       until: now,
     }));
   const spend = spendSummary(logs.turns, pricing);
-  const buckets = wasteBuckets(logs, pricing);
+  const buckets = wasteBuckets(logs, pricing, locale);
   const bucketTotal = buckets.reduce((sum, bucket) => sum + bucket.estimated_usd, 0);
 
   return {
     mirror: "wallet",
+    locale,
     generated_at: now.toISOString(),
     privacy: "local-only",
-    framing: { ...WALLET_FRAMING },
+    framing: walletFraming(locale),
     window: {
       days,
       from: since.toISOString(),
@@ -364,8 +381,7 @@ export async function createWalletReport(options = {}) {
         Math.min(spend.total_spend_usd, bucketTotal),
       ),
       unpriced_tokens: spend.unpriced_tokens,
-      estimate_note:
-        "Potential-savings figures are overlapping heuristics, not billing facts; the combined estimate is capped at API-equivalent usage.",
+      estimate_note: t("wallet.estimateNote", { locale }),
     },
     total_usage: spend.total_usage,
     spend_by_model: spend.by_model,
@@ -387,10 +403,10 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function formatPeriodDate(value) {
+function formatPeriodDate(value, locale = "en") {
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "Unknown date";
-  return new Intl.DateTimeFormat("en-US", {
+  if (!Number.isFinite(date.getTime())) return t("wallet.unknownDate", { locale });
+  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -407,51 +423,73 @@ function barWidth(spend, total) {
   return Math.max(0, Math.min(100, (numericSpend / numericTotal) * 100));
 }
 
-export function renderWallet(report) {
+export function renderWallet(report, locale = report?.locale || "en") {
+  const framing = walletFraming(locale);
   const lines = [
-    "Wallet（钱包镜）",
-    "Local-only cost report — transcript content is never printed or transmitted.",
-    `Last ${report.window.days} day(s): ${report.summary.assistant_turns.toLocaleString("en-US")} assistant turns across ${report.summary.sessions.toLocaleString("en-US")} sessions.`,
-    `${WALLET_FRAMING.usage_label}: ${dollars(report.summary.total_spend_usd)}.`,
-    WALLET_FRAMING.usage_explainer,
+    t("mirror.wallet", { locale }),
+    t("wallet.localReport", { locale }),
+    t("wallet.periodSummary", {
+      locale,
+      days: report.window.days,
+      turns: report.summary.assistant_turns.toLocaleString("en-US"),
+      sessions: report.summary.sessions.toLocaleString("en-US"),
+    }),
+    `${framing.usage_label}: ${dollars(report.summary.total_spend_usd)}.`,
+    framing.usage_explainer,
   ];
 
   if (report.summary.unpriced_tokens > 0) {
     lines.push(
-      `${report.summary.unpriced_tokens.toLocaleString("en-US")} tokens used unknown models and remain unpriced.`,
+      t("wallet.unpricedTokens", {
+        locale,
+        tokens: report.summary.unpriced_tokens.toLocaleString("en-US"),
+      }),
     );
   }
 
-  lines.push("", "Spend by model:");
-  if (report.spend_by_model.length === 0) lines.push("  No usage-bearing turns found.");
+  lines.push("", t("wallet.spendByModel", { locale }));
+  if (report.spend_by_model.length === 0) {
+    lines.push(`  ${t("wallet.noUsage", { locale })}`);
+  }
   for (const model of report.spend_by_model) {
-    const price = model.priced ? dollars(model.spend_usd) : "unpriced";
+    const price = model.priced ? dollars(model.spend_usd) : t("wallet.unpriced", { locale });
     lines.push(
-      `  ${model.model}: ${price} · ${model.total_tokens.toLocaleString("en-US")} tokens · ${model.turns.toLocaleString("en-US")} turns`,
+      `  ${t("wallet.modelRow", {
+        locale,
+        model: model.model,
+        price,
+        tokens: model.total_tokens.toLocaleString("en-US"),
+        turns: model.turns.toLocaleString("en-US"),
+      })}`,
     );
   }
 
-  lines.push("", "Top waste buckets (all estimates; buckets can overlap):");
+  lines.push("", t("wallet.wasteHeading", { locale }));
   for (const bucket of report.waste_buckets) {
     lines.push(
       `  ${bucket.label}: ${dollars(bucket.estimated_usd)} — ${bucket.evidence}`,
-      `    Fix: ${bucket.fix}`,
+      `    ${t("wallet.fix", { locale, fix: bucket.fix })}`,
     );
   }
   lines.push(
     "",
-    `${WALLET_FRAMING.savings_label} (capped at API-equivalent usage): ${dollars(report.summary.estimated_potential_waste_usd)}.`,
+    t("wallet.savingsSummary", {
+      locale,
+      label: framing.savings_label,
+      amount: dollars(report.summary.estimated_potential_waste_usd),
+    }),
     report.summary.estimate_note,
   );
   return lines.join("\n");
 }
 
-export function renderWalletHtml(report) {
+export function renderWalletHtml(report, locale = report?.locale || "en") {
+  const framing = walletFraming(locale);
   const total = Number(report.summary.total_spend_usd) || 0;
   const modelRows = report.spend_by_model.length
     ? report.spend_by_model
         .map((model) => {
-          const price = model.priced ? dollars(model.spend_usd) : "Unpriced";
+          const price = model.priced ? dollars(model.spend_usd) : t("wallet.unpriced", { locale });
           const width = barWidth(model.spend_usd, total).toFixed(2);
           return `
           <div class="model-row">
@@ -465,7 +503,7 @@ export function renderWalletHtml(report) {
           </div>`;
         })
         .join("")
-    : '<p class="empty">No usage-bearing turns found.</p>';
+    : `<p class="empty">${escapeHtml(t("wallet.noUsage", { locale }))}</p>`;
   const wasteCards = report.waste_buckets
     .map(
       (bucket) => `
@@ -477,11 +515,11 @@ export function renderWalletHtml(report) {
     .join("");
 
   return `<!doctype html>
-<html lang="en">
+<html lang="${locale}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>oneco wallet card</title>
+  <title>${escapeHtml(t("wallet.cardTitle", { locale }))}</title>
   <style>
     :root {
       color-scheme: dark;
@@ -586,27 +624,32 @@ export function renderWalletHtml(report) {
   <main class="card">
     <div class="content">
       <header>
-        <p class="eyebrow">oneco wallet</p>
-        <p class="period">Last ${escapeHtml(report.window.days)} days · ${escapeHtml(formatPeriodDate(report.window.from))} – ${escapeHtml(formatPeriodDate(report.window.to))}</p>
+        <p class="eyebrow">${escapeHtml(t("wallet.cardEyebrow", { locale }))}</p>
+        <p class="period">${escapeHtml(t("wallet.cardPeriod", {
+          locale,
+          days: report.window.days,
+          from: formatPeriodDate(report.window.from, locale),
+          to: formatPeriodDate(report.window.to, locale),
+        }))}</p>
       </header>
       <section class="hero" aria-labelledby="usage-label">
-        <p class="hero-label" id="usage-label">${escapeHtml(WALLET_FRAMING.usage_label)}</p>
+        <p class="hero-label" id="usage-label">${escapeHtml(framing.usage_label)}</p>
         <strong class="hero-number">${escapeHtml(dollars(total))}</strong>
-        <p class="hero-note">${escapeHtml(WALLET_FRAMING.usage_explainer)}</p>
+        <p class="hero-note">${escapeHtml(framing.usage_explainer)}</p>
       </section>
       <section class="section" aria-labelledby="models-label">
-        <h2 class="section-title" id="models-label">Spend by model</h2>
+        <h2 class="section-title" id="models-label">${escapeHtml(t("wallet.cardSpendHeading", { locale }))}</h2>
         <div class="models">${modelRows}
         </div>
       </section>
       <section class="section" aria-labelledby="waste-label">
-        <h2 class="section-title" id="waste-label">Waste buckets · estimates</h2>
+        <h2 class="section-title" id="waste-label">${escapeHtml(t("wallet.cardWasteHeading", { locale }))}</h2>
         <div class="waste-grid">${wasteCards}
         </div>
-        <p class="savings"><strong>${escapeHtml(WALLET_FRAMING.savings_label)}:</strong> ${escapeHtml(dollars(report.summary.estimated_potential_waste_usd))}</p>
+        <p class="savings"><strong>${escapeHtml(framing.savings_label)}:</strong> ${escapeHtml(dollars(report.summary.estimated_potential_waste_usd))}</p>
       </section>
     </div>
-    <footer>generated locally by oneco — nothing left this machine</footer>
+    <footer>${escapeHtml(t("wallet.cardFooter", { locale }))}</footer>
   </main>
 </body>
 </html>
@@ -625,12 +668,16 @@ export function walletHtmlPath(path, options = {}) {
 export async function writeWalletHtml(report, path, options = {}) {
   const destination = walletHtmlPath(path, options);
   await mkdir(dirname(destination), { recursive: true });
-  await writeFile(destination, renderWalletHtml(report), { encoding: "utf8", mode: 0o600 });
+  await writeFile(destination, renderWalletHtml(report, options.locale || report?.locale || "en"), {
+    encoding: "utf8",
+    mode: 0o600,
+  });
   return destination;
 }
 
 export async function runWallet(options = {}) {
   const output = options.output || process.stdout;
+  const locale = options.locale || "en";
   try {
     const report = await createWalletReport(options);
     if (options.html) {
@@ -639,18 +686,21 @@ export async function runWallet(options = {}) {
         typeof options.html === "string" ? options.html : undefined,
         options,
       );
-      output.write(`Wallet card written to ${path}\n`);
+      output.write(`${t("wallet.written", { locale, path })}\n`);
     } else {
-      output.write(options.json ? `${JSON.stringify(report, null, 2)}\n` : `${renderWallet(report)}\n`);
+      output.write(
+        options.json ? `${JSON.stringify(report, null, 2)}\n` : `${renderWallet(report, locale)}\n`,
+      );
     }
     return report;
   } catch {
     const report = {
       mirror: "wallet",
+      locale,
       generated_at: (options.now || new Date()).toISOString(),
       privacy: "local-only",
-      framing: { ...WALLET_FRAMING },
-      error: "The local wallet report could not be completed.",
+      framing: walletFraming(locale),
+      error: t("wallet.error", { locale }),
     };
     output.write(options.json ? `${JSON.stringify(report, null, 2)}\n` : `${report.error}\n`);
     return report;

@@ -4,22 +4,23 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createAuditReport, redactCredentialValues } from "./audit.mjs";
 import { createDoctorReport } from "./doctor.mjs";
+import { t } from "./i18n.mjs";
 import { createWalletReport } from "./wallet.mjs";
 
 function dollars(value) {
   return `$${Number(value || 0).toFixed(2)}`;
 }
 
-function localDisplayText(value) {
-  return redactCredentialValues(String(value ?? ""))
+function localDisplayText(value, locale) {
+  return redactCredentialValues(String(value ?? ""), locale)
     .replaceAll(/https:\/\//gi, "https:／／")
     .replaceAll(/http:\/\//gi, "http:／／")
     .replaceAll(/\/\/cdn/gi, "／／cdn")
     .replaceAll(/fetch\s*\(/gi, "fetch [");
 }
 
-function escapeHtml(value) {
-  return localDisplayText(value)
+function escapeHtml(value, locale) {
+  return localDisplayText(value, locale)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -27,10 +28,10 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function formatTimestamp(value) {
+function formatTimestamp(value, locale = "en") {
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "Unknown time";
-  return new Intl.DateTimeFormat("en-US", {
+  if (!Number.isFinite(date.getTime())) return t("dashboard.unknownTime", { locale });
+  return new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -56,7 +57,7 @@ function doctorSeverity(advisory) {
   return advisory?.status === "withdrawn" ? "info" : "warning";
 }
 
-function doctorCard(report) {
+function doctorCard(report, locale) {
   const advisories = Array.isArray(report?.advisories) ? report.advisories : [];
   const rows = advisories.length
     ? advisories
@@ -68,89 +69,98 @@ function doctorCard(report) {
               ? [advisory.fix]
               : [];
           const fixMarkup = fixes.length
-            ? `<ol>${fixes.map((fix) => `<li>${escapeHtml(fix)}</li>`).join("")}</ol>`
-            : '<p class="muted detail">No fix steps supplied.</p>';
+            ? `<ol>${fixes.map((fix) => `<li>${escapeHtml(fix, locale)}</li>`).join("")}</ol>`
+            : `<p class="muted detail">${escapeHtml(t("dashboard.noFixSteps", { locale }), locale)}</p>`;
           return `
             <article class="finding advisory severity-${severity}">
               <div class="finding-heading">
                 <span class="severity-dot" aria-hidden="true"></span>
-                <strong>${escapeHtml(advisory.id || "Advisory")}</strong>
-                <span class="severity-label">${escapeHtml(severity)}</span>
+                <strong>${escapeHtml(advisory.id || t("dashboard.advisory", { locale }), locale)}</strong>
+                <span class="severity-label">${escapeHtml(t(`dashboard.${severity}`, { locale }), locale)}</span>
               </div>
-              <p>${escapeHtml(advisory.summary || "Matched this local environment.")}</p>
-              <div class="fix"><span>Fix</span>${fixMarkup}</div>
+              <p>${escapeHtml(advisory.summary || t("dashboard.matchedEnvironment", { locale }), locale)}</p>
+              <div class="fix"><span>${escapeHtml(t("dashboard.fix", { locale }), locale)}</span>${fixMarkup}</div>
             </article>`;
         })
         .join("")
-    : '<div class="clear-state"><span aria-hidden="true">✓</span><p>No local advisories matched this environment.</p></div>';
+    : `<div class="clear-state"><span aria-hidden="true">✓</span><p>${escapeHtml(t("dashboard.noAdvisories", { locale }), locale)}</p></div>`;
 
   return `
     <section class="card doctor-card" aria-labelledby="doctor-title">
       <div class="card-heading">
         <div>
-          <p class="eyebrow">Environment health</p>
-          <h2 id="doctor-title">Doctor（修理镜）</h2>
+          <p class="eyebrow">${escapeHtml(t("dashboard.environmentHealth", { locale }), locale)}</p>
+          <h2 id="doctor-title">${escapeHtml(t("mirror.doctor", { locale }), locale)}</h2>
         </div>
-        <span class="count-badge">${escapeHtml(report?.summary?.matched || 0)} matched</span>
+        <span class="count-badge">${escapeHtml(t("dashboard.matchedCount", { locale, count: report?.summary?.matched || 0 }), locale)}</span>
       </div>
       <div class="finding-list">${rows}
       </div>
     </section>`;
 }
 
-function walletCard(report) {
+function localizedBucketLabel(bucket, locale) {
+  const key = {
+    retry_storms: "wallet.retryLabel",
+    context_bloat: "wallet.contextLabel",
+    tier_mismatch: "wallet.tierLabel",
+  }[bucket?.key];
+  return key ? t(key, { locale }) : bucket?.label || bucket?.key || t("dashboard.estimate", { locale });
+}
+
+function walletCard(report, locale) {
   const total = Number(report?.summary?.total_spend_usd) || 0;
   const models = Array.isArray(report?.spend_by_model) ? report.spend_by_model : [];
   const modelRows = models.length
     ? models
         .map((model) => {
-          const value = model.priced === false ? "Unpriced" : dollars(model.spend_usd);
+          const value = model.priced === false ? t("dashboard.unpriced", { locale }) : dollars(model.spend_usd);
           const width = barWidth(model.spend_usd, total).toFixed(2);
           return `
             <div class="model-row">
-              <div class="row-meta"><span>${escapeHtml(model.model || "Unknown model")}</span><strong>${escapeHtml(value)}</strong></div>
-              <div class="bar-track" role="img" aria-label="${escapeHtml(model.model || "Unknown model")}: ${escapeHtml(value)}">
+              <div class="row-meta"><span>${escapeHtml(model.model || t("dashboard.unknownModel", { locale }), locale)}</span><strong>${escapeHtml(value, locale)}</strong></div>
+              <div class="bar-track" role="img" aria-label="${escapeHtml(model.model || t("dashboard.unknownModel", { locale }), locale)}: ${escapeHtml(value, locale)}">
                 <span class="bar-fill" style="width:${width}%"></span>
               </div>
             </div>`;
         })
         .join("")
-    : '<p class="muted empty">No usage-bearing turns found.</p>';
+    : `<p class="muted empty">${escapeHtml(t("dashboard.noUsage", { locale }), locale)}</p>`;
   const buckets = (Array.isArray(report?.waste_buckets) ? report.waste_buckets : []).slice(0, 3);
   const wasteRows = buckets.length
     ? buckets
         .map(
           (bucket) => `
             <div class="waste-row">
-              <span>${escapeHtml(bucket.label || bucket.key || "Estimate")}</span>
-              <strong>${escapeHtml(dollars(bucket.estimated_usd))}</strong>
+              <span>${escapeHtml(localizedBucketLabel(bucket, locale), locale)}</span>
+              <strong>${escapeHtml(dollars(bucket.estimated_usd), locale)}</strong>
             </div>`,
         )
         .join("")
-    : '<p class="muted empty">No potential-savings estimates found.</p>';
+    : `<p class="muted empty">${escapeHtml(t("dashboard.noSavings", { locale }), locale)}</p>`;
 
   return `
     <section class="card wallet-card" aria-labelledby="wallet-title">
       <div class="card-heading">
         <div>
-          <p class="eyebrow">Cost visibility</p>
-          <h2 id="wallet-title">Wallet（钱包镜）</h2>
+          <p class="eyebrow">${escapeHtml(t("dashboard.costVisibility", { locale }), locale)}</p>
+          <h2 id="wallet-title">${escapeHtml(t("mirror.wallet", { locale }), locale)}</h2>
         </div>
-        <span class="count-badge">${escapeHtml(report?.window?.days || 30)} days</span>
+        <span class="count-badge">${escapeHtml(t("dashboard.days", { locale, count: report?.window?.days || 30 }), locale)}</span>
       </div>
       <div class="usage-hero">
-        <span>API-equivalent usage</span>
-        <strong>${escapeHtml(dollars(total))}</strong>
-        <p>What this usage would cost at API list prices — subscription users: this is what your plan absorbed, not your bill.</p>
+        <span>${escapeHtml(t("wallet.usageLabel", { locale }), locale)}</span>
+        <strong>${escapeHtml(dollars(total), locale)}</strong>
+        <p>${escapeHtml(t("wallet.usageExplainer", { locale }), locale)}</p>
       </div>
       <div class="wallet-sections">
         <div>
-          <h3>Spend by model</h3>
+          <h3>${escapeHtml(t("dashboard.spendByModel", { locale }), locale)}</h3>
           <div class="model-list">${modelRows}
           </div>
         </div>
         <div>
-          <h3>Top waste buckets <span>estimates</span></h3>
+          <h3>${escapeHtml(t("dashboard.wasteHeading", { locale }), locale)} <span>${escapeHtml(t("dashboard.estimates", { locale }), locale)}</span></h3>
           <div class="waste-list">${wasteRows}
           </div>
         </div>
@@ -158,7 +168,7 @@ function walletCard(report) {
     </section>`;
 }
 
-function auditCard(report) {
+function auditCard(report, locale) {
   const summary = report?.summary || {};
   const findings = (Array.isArray(report?.findings) ? report.findings : []).filter(
     (entry) => entry.severity === "critical" || entry.severity === "warning",
@@ -167,55 +177,55 @@ function auditCard(report) {
     ? findings
         .map(
           (finding) => `
-            <article class="finding severity-${escapeHtml(finding.severity)}">
+            <article class="finding severity-${escapeHtml(finding.severity, locale)}">
               <div class="finding-heading">
                 <span class="severity-dot" aria-hidden="true"></span>
-                <strong>${escapeHtml(finding.id || "Finding")}</strong>
-                <span class="severity-label">${escapeHtml(finding.severity)}</span>
+                <strong>${escapeHtml(finding.id || t("dashboard.finding", { locale }), locale)}</strong>
+                <span class="severity-label">${escapeHtml(t(`dashboard.${finding.severity}`, { locale }), locale)}</span>
               </div>
-              <p>${escapeHtml(finding.what || "Local audit finding")}</p>
+              <p>${escapeHtml(finding.what || t("dashboard.localAuditFinding", { locale }), locale)}</p>
               <dl>
-                <div><dt>Where</dt><dd>${escapeHtml(finding.where || "Not specified")}</dd></div>
-                <div><dt>Fix</dt><dd>${escapeHtml(finding.fix || "Review this local configuration.")}</dd></div>
+                <div><dt>${escapeHtml(t("dashboard.where", { locale }), locale)}</dt><dd>${escapeHtml(finding.where || t("dashboard.notSpecified", { locale }), locale)}</dd></div>
+                <div><dt>${escapeHtml(t("dashboard.fixLabel", { locale }), locale)}</dt><dd>${escapeHtml(finding.fix || t("dashboard.reviewConfig", { locale }), locale)}</dd></div>
               </dl>
             </article>`,
         )
         .join("")
-    : `<div class="clear-state"><span aria-hidden="true">✓</span><p>${Number(summary.total) === 0 ? "All clear — no audit findings." : "No critical or warning findings."}</p></div>`;
+    : `<div class="clear-state"><span aria-hidden="true">✓</span><p>${escapeHtml(t(Number(summary.total) === 0 ? "dashboard.allClear" : "dashboard.noUrgentFindings", { locale }), locale)}</p></div>`;
 
   return `
     <section class="card audit-card" aria-labelledby="audit-title">
       <div class="card-heading">
         <div>
-          <p class="eyebrow">Local access review</p>
-          <h2 id="audit-title">Audit（安全镜）</h2>
+          <p class="eyebrow">${escapeHtml(t("dashboard.localAccessReview", { locale }), locale)}</p>
+          <h2 id="audit-title">${escapeHtml(t("mirror.audit", { locale }), locale)}</h2>
         </div>
-        <span class="count-badge">${escapeHtml(summary.total || 0)} total</span>
+        <span class="count-badge">${escapeHtml(t("dashboard.total", { locale, count: summary.total || 0 }), locale)}</span>
       </div>
-      <div class="traffic-strip" aria-label="${escapeHtml(summary.critical || 0)} critical, ${escapeHtml(summary.warning || 0)} warning, ${escapeHtml(summary.info || 0)} info findings">
-        <div class="traffic critical"><span>${escapeHtml(summary.critical || 0)}</span><small>Critical</small></div>
-        <div class="traffic warning"><span>${escapeHtml(summary.warning || 0)}</span><small>Warning</small></div>
-        <div class="traffic info"><span>${escapeHtml(summary.info || 0)}</span><small>Info</small></div>
+      <div class="traffic-strip" aria-label="${escapeHtml(t("dashboard.trafficAria", { locale, critical: summary.critical || 0, warning: summary.warning || 0, info: summary.info || 0 }), locale)}">
+        <div class="traffic critical"><span>${escapeHtml(summary.critical || 0, locale)}</span><small>${escapeHtml(t("dashboard.critical", { locale }), locale)}</small></div>
+        <div class="traffic warning"><span>${escapeHtml(summary.warning || 0, locale)}</span><small>${escapeHtml(t("dashboard.warning", { locale }), locale)}</small></div>
+        <div class="traffic info"><span>${escapeHtml(summary.info || 0, locale)}</span><small>${escapeHtml(t("dashboard.info", { locale }), locale)}</small></div>
       </div>
       <div class="finding-list">${findingRows}
       </div>
     </section>`;
 }
 
-function cognitionCard(report) {
+function cognitionCard(report, locale) {
   if (!report) {
     return `
     <section class="card cognition-card" aria-labelledby="cognition-title">
       <div class="card-heading">
         <div>
-          <p class="eyebrow">Thinking patterns</p>
-          <h2 id="cognition-title">Cognition（认知镜）</h2>
+          <p class="eyebrow">${escapeHtml(t("dashboard.thinkingPatterns", { locale }), locale)}</p>
+          <h2 id="cognition-title">${escapeHtml(t("mirror.cognition", { locale }), locale)}</h2>
         </div>
-        <span class="count-badge quiet">Coming soon</span>
+        <span class="count-badge quiet">${escapeHtml(t("dashboard.comingSoon", { locale }), locale)}</span>
       </div>
       <div class="placeholder">
         <div class="placeholder-mark" aria-hidden="true">◌</div>
-        <p>The cognition mirror is not implemented yet. This space is reserved for its local summary.</p>
+        <p>${escapeHtml(t("dashboard.cognitionPlaceholder", { locale }), locale)}</p>
       </div>
     </section>`;
   }
@@ -227,23 +237,25 @@ function cognitionCard(report) {
     <section class="card cognition-card" aria-labelledby="cognition-title">
       <div class="card-heading">
         <div>
-          <p class="eyebrow">Thinking patterns</p>
-          <h2 id="cognition-title">Cognition（认知镜）</h2>
+          <p class="eyebrow">${escapeHtml(t("dashboard.thinkingPatterns", { locale }), locale)}</p>
+          <h2 id="cognition-title">${escapeHtml(t("mirror.cognition", { locale }), locale)}</h2>
         </div>
-        <span class="count-badge quiet">Local summary</span>
+        <span class="count-badge quiet">${escapeHtml(t("dashboard.localSummary", { locale }), locale)}</span>
       </div>
-      <div class="placeholder"><p>${escapeHtml(summary)}</p></div>
+      <div class="placeholder"><p>${escapeHtml(summary, locale)}</p></div>
     </section>`;
 }
 
 export async function createDashboardReport(options = {}) {
+  const locale = options.locale || "en";
   const now = options.now || new Date();
   const [doctor, wallet, audit] = await Promise.all([
-    createDoctorReport({ ...options.doctorOptions, now: options.doctorOptions?.now || now }),
-    createWalletReport({ ...options.walletOptions, now: options.walletOptions?.now || now }),
-    createAuditReport({ ...options.auditOptions, now: options.auditOptions?.now || now }),
+    createDoctorReport({ ...options.doctorOptions, now: options.doctorOptions?.now || now, locale }),
+    createWalletReport({ ...options.walletOptions, now: options.walletOptions?.now || now, locale }),
+    createAuditReport({ ...options.auditOptions, now: options.auditOptions?.now || now, locale }),
   ]);
   return {
+    locale,
     generated_at: now.toISOString(),
     privacy: "local-only",
     doctor,
@@ -253,14 +265,19 @@ export async function createDashboardReport(options = {}) {
   };
 }
 
-export function renderDashboard(report) {
+export function renderDashboard(report, locale = report?.locale || "en") {
   const generatedAt = report?.generated_at || new Date().toISOString();
+  const timeMarkup = `<time datetime="${escapeHtml(generatedAt, locale)}">${escapeHtml(formatTimestamp(generatedAt, locale), locale)}</time>`;
+  const generatedMarkup = escapeHtml(
+    t("dashboard.generated", { locale, time: "__ONECO_TIME__" }),
+    locale,
+  ).replace("__ONECO_TIME__", timeMarkup);
   const html = `<!doctype html>
-<html lang="en">
+<html lang="${locale}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>oneco — local health panel</title>
+  <title>${escapeHtml(t("dashboard.title", { locale }), locale)}</title>
   <style>
     :root {
       color-scheme: dark;
@@ -399,23 +416,23 @@ export function renderDashboard(report) {
   <main class="shell">
     <header class="page-header">
       <div>
-        <h1 class="brand">oneco — local health panel</h1>
-        <p class="timestamp">Generated <time datetime="${escapeHtml(generatedAt)}">${escapeHtml(formatTimestamp(generatedAt))}</time></p>
+        <h1 class="brand">${escapeHtml(t("dashboard.brand", { locale }), locale)}</h1>
+        <p class="timestamp">${generatedMarkup}</p>
       </div>
-      <p class="trust-badge">Everything on this page was computed locally. Nothing left this machine.</p>
+      <p class="trust-badge">${escapeHtml(t("dashboard.trust", { locale }), locale)}</p>
     </header>
     <div class="grid">
-      ${doctorCard(report?.doctor)}
-      ${walletCard(report?.wallet)}
-      ${auditCard(report?.audit)}
-      ${cognitionCard(report?.cognition)}
+      ${doctorCard(report?.doctor, locale)}
+      ${walletCard(report?.wallet, locale)}
+      ${auditCard(report?.audit, locale)}
+      ${cognitionCard(report?.cognition, locale)}
     </div>
-    <footer class="page-footer">oneco local health panel · generated for this machine only</footer>
+    <footer class="page-footer">${escapeHtml(t("dashboard.footer", { locale }), locale)}</footer>
   </main>
 </body>
 </html>
 `;
-  return redactCredentialValues(html);
+  return redactCredentialValues(html, locale);
 }
 
 export function dashboardHtmlPath(path, options = {}) {
@@ -430,7 +447,11 @@ export function dashboardHtmlPath(path, options = {}) {
 export async function writeDashboardHtml(report, path, options = {}) {
   const destination = dashboardHtmlPath(path, options);
   await mkdir(dirname(destination), { recursive: true });
-  await writeFile(destination, renderDashboard(report), { encoding: "utf8", mode: 0o600 });
+  await writeFile(
+    destination,
+    renderDashboard(report, options.locale || report?.locale || "en"),
+    { encoding: "utf8", mode: 0o600 },
+  );
   return destination;
 }
 
@@ -458,12 +479,13 @@ export async function openDashboard(path, options = {}) {
 
 export async function runDashboard(options = {}) {
   const output = options.output || process.stdout;
+  const locale = options.locale || "en";
   const report = options.report || (await createDashboardReport(options));
   const destination = await writeDashboardHtml(report, options.out, options);
-  output.write(`Dashboard written to ${destination}\n`);
+  output.write(`${t("dashboard.written", { locale, path: destination })}\n`);
   if (options.open) {
     await openDashboard(destination, options);
-    output.write(`Opened ${destination}\n`);
+    output.write(`${t("dashboard.opened", { locale, path: destination })}\n`);
   }
   return { destination, report };
 }

@@ -1,5 +1,6 @@
 import { scanEnvironment } from "./env-scan.mjs";
 import { loadAdvisorySources } from "./advisory-cache.mjs";
+import { t } from "./i18n.mjs";
 
 function parseVersion(value) {
   const match = String(value || "").trim().match(/^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
@@ -168,6 +169,7 @@ export async function loadAdvisories(advisoriesUrl, options = {}) {
 }
 
 export async function createDoctorReport(options = {}) {
+  const locale = options.locale || "en";
   const fingerprint = options.fingerprint || (await scanEnvironment(options.scanOptions));
   const advisories = options.advisories || (await loadAdvisories(options.advisoriesUrl, {
     cachePath: options.cachePath,
@@ -178,6 +180,7 @@ export async function createDoctorReport(options = {}) {
 
   return {
     mirror: "doctor",
+    locale,
     generated_at: now.toISOString(),
     privacy: "local-only",
     fingerprint,
@@ -189,25 +192,35 @@ export async function createDoctorReport(options = {}) {
   };
 }
 
-export function renderDoctor(report) {
+export function renderDoctor(report, locale = report?.locale || "en") {
   const lines = [
-    "Doctor（修理镜）",
-    "Local-only environment report — nothing leaves this machine.",
-    `Claude Code ${report.fingerprint.claude.version || "not found"} · Node ${report.fingerprint.node.version} · ${report.fingerprint.os.platform}/${report.fingerprint.os.arch}`,
-    `${report.summary.matched} of ${report.summary.advisories_scanned} local advisories matched.`,
+    t("mirror.doctor", { locale }),
+    t("doctor.localReport", { locale }),
+    t("doctor.environment", {
+      locale,
+      claude: report.fingerprint.claude.version || t("doctor.notFound", { locale }),
+      node: report.fingerprint.node.version,
+      platform: report.fingerprint.os.platform,
+      arch: report.fingerprint.os.arch,
+    }),
+    t("doctor.matchCount", {
+      locale,
+      matched: report.summary.matched,
+      scanned: report.summary.advisories_scanned,
+    }),
   ];
 
   if (report.advisories.length === 0) {
-    lines.push("", "No local advisories matched this environment fingerprint.");
+    lines.push("", t("doctor.noMatches", { locale }));
   }
 
   for (const advisory of report.advisories) {
     lines.push(
       "",
-      `${advisory.id}${advisory.status === "draft" ? " [DRAFT]" : ""} — ${advisory.summary}`,
-      `Evidence: ${advisory.evidence}`,
-      `Source: ${advisory.source}`,
-      "Fix:",
+      `${advisory.id}${advisory.status === "draft" ? ` [${t("doctor.draft", { locale })}]` : ""} — ${advisory.summary}`,
+      t("doctor.evidence", { locale, value: advisory.evidence }),
+      t("doctor.source", { locale, value: advisory.source }),
+      t("doctor.fix", { locale }),
       ...advisory.fix_steps.map((step, index) => `  ${index + 1}. ${step}`),
     );
   }
@@ -215,7 +228,7 @@ export function renderDoctor(report) {
   if (report.fingerprint.scan_errors.length > 0) {
     lines.push(
       "",
-      `Note: ${report.fingerprint.scan_errors.length} optional configuration file(s) could not be parsed.`,
+      t("doctor.scanErrors", { locale, count: report.fingerprint.scan_errors.length }),
     );
   }
   return lines.join("\n");
@@ -223,19 +236,23 @@ export function renderDoctor(report) {
 
 export async function runDoctor(options = {}) {
   const output = options.output || process.stdout;
+  const locale = options.locale || "en";
   try {
     const report = await createDoctorReport(options);
-    output.write(options.json ? `${JSON.stringify(report, null, 2)}\n` : `${renderDoctor(report)}\n`);
+    output.write(
+      options.json ? `${JSON.stringify(report, null, 2)}\n` : `${renderDoctor(report, locale)}\n`,
+    );
     return report;
   } catch {
     const report = {
       mirror: "doctor",
+      locale,
       generated_at: (options.now || new Date()).toISOString(),
       privacy: "local-only",
       fingerprint: null,
       summary: { advisories_scanned: 0, matched: 0 },
       advisories: [],
-      error: "The local environment report could not be completed.",
+      error: t("doctor.error", { locale }),
     };
     output.write(options.json ? `${JSON.stringify(report, null, 2)}\n` : `${report.error}\n`);
     return report;

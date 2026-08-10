@@ -61,10 +61,11 @@ function syntheticReport() {
 test("dashboard fixture renders all mirrors locally with masking and key numbers preserved", () => {
   const html = renderDashboard(syntheticReport());
 
-  assert.match(html, /Doctor（修理镜）/);
-  assert.match(html, /Wallet（钱包镜）/);
-  assert.match(html, /Audit（安全镜）/);
-  assert.match(html, /Cognition（认知镜）/);
+  assert.match(html, /<html lang="en">/);
+  assert.match(html, />Doctor</);
+  assert.match(html, />Wallet</);
+  assert.match(html, />Audit</);
+  assert.match(html, />Cognition</);
   assert.match(html, /Coming soon/);
   assert.match(html, /1 matched/);
   assert.match(html, /\$42\.75/);
