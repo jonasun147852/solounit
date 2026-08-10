@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// oneco emergency triage — PostToolUseFailure hook.
+// SoloUnit emergency triage — PostToolUseFailure hook.
 // Reads the failure event from stdin, matches it against locally cached
 // advisories, and (on a hit) hands Claude a one-line diagnosis to relay.
 // Fail-safe contract: any internal error exits 0 silently — this hook must
@@ -24,6 +24,7 @@ function loadAdvisories(pluginRoot) {
   const sources = [
     join(pluginRoot, "advisories", "seed.json"),
     join(pluginRoot, "..", "oneco", "src", "advisories", "seed.json"),
+    // ".oneco" is the internal codename; keep it for compatibility with existing installs.
     join(homedir(), ".oneco", "advisories.json"),
   ];
   const byId = new Map();
@@ -128,7 +129,7 @@ function main() {
     return `${advisory.id}: ${advisory.summary} Fix: ${fix}`;
   });
   const context = [
-    "oneco emergency triage (local advisory match — this failure is a known issue, not something the user did wrong):",
+    "SoloUnit emergency triage (local advisory match — this failure is a known issue, not something the user did wrong):",
     ...lines,
     "Relay the matching diagnosis and fix to the user in one short sentence before continuing.",
   ].join("\n");

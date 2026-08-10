@@ -62,6 +62,37 @@ test("sync uses an injected loader, validates entries, and writes cache metadata
   }
 });
 
+test("sync accepts both hub environment variables and SOLOUNIT_HUB_URL wins", async () => {
+  const requests = [];
+  const cacheWriter = async () => ({
+    updatedAt: "2026-08-09T12:34:56.000Z",
+    path: "/tmp/advisories.json",
+  });
+  const loader = async (url) => {
+    requests.push(url);
+    return { advisories: [] };
+  };
+
+  await syncAdvisories({
+    environment: {
+      SOLOUNIT_HUB_URL: "https://solounit.example.test",
+      ONECO_HUB_URL: "https://legacy.example.test",
+    },
+    loader,
+    cacheWriter,
+  });
+  await syncAdvisories({
+    environment: { ONECO_HUB_URL: "https://legacy.example.test" },
+    loader,
+    cacheWriter,
+  });
+
+  assert.deepEqual(requests, [
+    "https://solounit.example.test/api/advisories",
+    "https://legacy.example.test/api/advisories",
+  ]);
+});
+
 test("sync rejects unknown advisory fields without replacing the cache", async () => {
   const homeDirectory = await mkdtemp(join(tmpdir(), "oneco-sync-invalid-"));
   try {
@@ -99,5 +130,7 @@ test("sync without an explicit URL exits 1 without calling the loader", async ()
 
   assert.equal(exitCode, 1);
   assert.equal(loaded, false);
-  assert.match(errorOutput.value, /oneco sync --url http:\/\/localhost:8787/);
+  assert.match(errorOutput.value, /solounit sync --url http:\/\/localhost:8787/);
+  assert.match(errorOutput.value, /SOLOUNIT_HUB_URL/);
+  assert.doesNotMatch(errorOutput.value, /ONECO_HUB_URL/);
 });

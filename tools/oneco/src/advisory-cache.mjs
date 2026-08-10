@@ -20,6 +20,7 @@ const ADVISORY_FIELDS = [
 const ADVISORY_STATUSES = new Set(["draft", "published", "withdrawn"]);
 
 export function advisoryCachePath(homeDirectory = homedir()) {
+  // ".oneco" is the internal codename; keep it for compatibility with existing installs.
   return join(homeDirectory, ".oneco", "advisories.json");
 }
 

@@ -110,5 +110,5 @@ test("runDashboard writes the default private file and opens it without a shell"
     output.value,
     `Dashboard written to ${destination}\nOpened ${destination}\n`,
   );
-  assert.match(await readFile(destination, "utf8"), /oneco — local health panel/);
+  assert.match(await readFile(destination, "utf8"), /SoloUnit — local health panel/);
 });

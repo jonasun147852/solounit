@@ -117,6 +117,6 @@ test("wallet HTML renders a private, self-contained card from the fixture report
   assert.match(html, /Retry storms \(estimate\)/);
   assert.match(html, /Potential savings if optimized/);
   assert.equal(html.match(/class="waste-card"/g)?.length, 3);
-  assert.match(html, /generated locally by oneco — nothing left this machine/);
+  assert.match(html, /generated locally by SoloUnit — nothing left this machine/);
   assert.doesNotMatch(html, /http/i);
 });

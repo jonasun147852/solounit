@@ -1,19 +1,23 @@
-# oneco
+# SoloUnit
 
-`oneco` is a dependency-free CLI with three offline mirrors and a local visual dashboard for Claude Code power-users:
+[![CI](https://img.shields.io/github/actions/workflow/status/jonasun147852/solounit/ci.yml?branch=main&label=CI)](https://github.com/jonasun147852/solounit/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![Node >=22](https://img.shields.io/badge/node-%3E%3D22-339933.svg?logo=nodedotjs) ![local-only • no telemetry](https://img.shields.io/badge/local--only%20%E2%80%A2%20no%20telemetry-2f855a.svg)
+
+**When your agent acts up, run solounit first.**
+
+SoloUnit is a dependency-free CLI with three offline mirrors and a local visual dashboard for Claude Code power-users:
 
 - **Doctor（修理镜）** compares a local environment fingerprint with bundled, git-versioned advisories.
 - **Audit（安全镜）** reviews granted agent access, hooks, credential exposure, permissions, and local integration names.
 - **Wallet（钱包镜）** turns local Claude Code usage records into an API-equivalent usage and potential-savings report.
 
-Advisory updates are an explicit, separate action. Only `oneco sync` may use the network; the mirrors never do.
+Advisory updates are an explicit, separate action. Only `solounit sync` may use the network; the mirrors never do.
 
 Node.js 22 or newer is required. The package has zero runtime dependencies.
 
 ## Run
 
 ```sh
-npx oneco-cli graft
+npx solounit graft
 ```
 
 **What you'll see:** `Graft complete: Doctor matched [local count] setup advisories. Wallet reports [local total] in API-equivalent usage and up to [local estimate] in potential savings; all analysis stayed on this machine.`
@@ -21,28 +25,37 @@ npx oneco-cli graft
 Or run from source:
 
 ```sh
-git clone https://github.com/jonasun147852/oneco.git
-node oneco/tools/oneco/bin/oneco.mjs graft
+git clone https://github.com/jonasun147852/solounit.git
+node solounit/tools/oneco/bin/oneco.mjs graft
 ```
 
 ## Commands
 
 ```sh
-oneco doctor
-oneco doctor --json
-oneco audit
-oneco audit --json
-oneco sync --url http://localhost:8787
-oneco wallet
-oneco wallet --days 7
-oneco wallet --days 30 --json
-oneco wallet --html
-oneco wallet --days 7 --html ./wallet-card.html
-oneco dashboard
-oneco dashboard --out ./oneco-panel.html
-oneco dashboard --open
-oneco graft
+solounit doctor
+solounit doctor --json
+solounit audit
+solounit audit --json
+solounit sync --url http://localhost:8787
+solounit wallet
+solounit wallet --days 7
+solounit wallet --days 30 --json
+solounit wallet --html
+solounit wallet --days 7 --html ./wallet-card.html
+solounit dashboard
+solounit dashboard --out ./solounit-panel.html
+solounit dashboard --open
+solounit graft
 ```
+
+## Emergency triage (Claude Code plugin)
+
+```sh
+claude plugin marketplace add jonasun147852/solounit
+claude plugin install solounit@solounit
+```
+
+Slash commands: `/solounit:graft` · `/solounit:doctor` · `/solounit:wallet` · `/solounit:sync`
 
 `doctor` reports only advisories that match the installed tool, version range, and every required fingerprint dimension. A doctor report always exits with status 0 because it is a mirror, not a CI gate. The bundled seed entries are marked `draft` for operator review and cite scrubbed transcript filename/line evidence.
 
@@ -55,22 +68,24 @@ The known-bad registry is `src/security/known-bad-seed.json`. Each entry has `id
 `sync` fetches `GET <base-url>/api/advisories`, validates every returned advisory, and atomically replaces `~/.oneco/advisories.json`. Pass the hub explicitly:
 
 ```sh
-oneco sync --url http://localhost:8787
+solounit sync --url http://localhost:8787
 ```
 
-Alternatively, set `ONECO_HUB_URL`. There is deliberately no built-in server URL: if neither the flag nor the environment variable is set, sync prints instructions and exits with status 1. A successful sync reports both the number fetched and the cache update time. When an advisory ID exists in both sources, the synced cache version wins.
+Alternatively, set `SOLOUNIT_HUB_URL`. There is deliberately no built-in server URL: if neither the flag nor the environment variable is set, sync prints instructions and exits with status 1. A successful sync reports both the number fetched and the cache update time. When an advisory ID exists in both sources, the synced cache version wins.
+
+Set `SOLOUNIT_LANG=en` or `SOLOUNIT_LANG=zh` to choose a default interface language. The `--lang <en|zh>` flag takes precedence for an individual command.
 
 `wallet` defaults to the last 30 days. It deduplicates split assistant records by Claude message ID, sums input, output, cache-read, five-minute cache-write, and one-hour cache-write tokens per model, then applies the bundled prices in `src/pricing.json`. Unknown models remain visible as unpriced tokens and never stop the report.
 
 The headline is **API-equivalent usage**, not an estimated bill: “What this usage would cost at API list prices — subscription users: this is what your plan absorbed, not your bill.” The waste summary is framed as **potential savings if optimized**. Existing JSON price field names remain stable, and the JSON report includes a top-level `framing` object with these labels and the explainer.
 
-`oneco wallet --html [path]` writes a self-contained share card with inline CSS and no scripts or external requests. The default path is `~/.oneco/wallet-card.html`; the CLI prints the completed path. The card contains only aggregate numbers and model names—never transcript content, file paths, or session names. Like the terminal and JSON wallet modes, HTML generation is entirely local.
+`solounit wallet --html [path]` writes a self-contained share card with inline CSS and no scripts or external requests. The default path is `~/.oneco/wallet-card.html`; the CLI prints the completed path. The card contains only aggregate numbers and model names—never transcript content, file paths, or session names. Like the terminal and JSON wallet modes, HTML generation is entirely local.
 
-`oneco dashboard [--out PATH] [--open]` runs Doctor, Wallet, and Audit in-process and writes a self-contained visual health panel. Until a cognition mirror exists, its fourth card is clearly labeled “Coming soon.” The default path is `~/.oneco/dashboard.html`; `--out` selects another local path, and `--open` launches the completed file in the OS default browser without shell interpolation.
+`solounit dashboard [--out PATH] [--open]` runs Doctor, Wallet, and Audit in-process and writes a self-contained visual health panel. Until a cognition mirror exists, its fourth card is clearly labeled “Coming soon.” The default path is `~/.oneco/dashboard.html`; `--out` selects another local path, and `--open` launches the completed file in the OS default browser without shell interpolation.
 
 The dashboard is fully local: its HTML has inline CSS, no scripts, no links, no web fonts, and zero external requests. It renders Audit's already-masked findings and applies the same credential-redaction boundary once more before writing the file. It never re-reads raw secret values.
 
-`graft` runs doctor and wallet, preserves its existing two-sentence summary, and appends a fourth local audit summary section. When audit has findings, graft points to `oneco audit` for detail. It closes by pointing to `oneco dashboard --open` for the visual panel. It is intended for first-run onboarding.
+`graft` runs doctor and wallet, preserves its existing two-sentence summary, and appends a fourth local audit summary section. When audit has findings, graft points to `solounit audit` for detail. It closes by pointing to `solounit dashboard --open` for the visual panel. It is intended for first-run onboarding.
 
 ## Privacy and network guarantee
 
@@ -78,7 +93,7 @@ The dashboard is fully local: its HTML has inline CSS, no scripts, no links, no 
 
 - They do not use network APIs, sockets, telemetry, DNS lookups, or update checks.
 - No transcript, configuration, fingerprint, token count, or report leaves the machine.
-- Files under `~/.claude` and project configuration files are read-only; `oneco` never edits them.
+- Files under `~/.claude` and project configuration files are read-only; SoloUnit never edits them.
 - Transcript message text and tool payloads are not retained or printed. Wallet keeps only aggregate usage, timestamps, model names, session grouping, retry metadata, and content/tool type markers needed by its heuristics.
 - Doctor never prints configuration commands, environment values, credentials, or MCP configuration payloads.
 - Audit never follows symlinks, prints full credential values, or scans beyond its documented fixed files and bounded `~/Documents` project search.
@@ -140,7 +155,7 @@ Waste buckets can overlap. The combined potential-savings-if-optimized number is
 From the repository root:
 
 ```sh
-npm run test:oneco
+npm run test:solounit
 ```
 
 Or directly:

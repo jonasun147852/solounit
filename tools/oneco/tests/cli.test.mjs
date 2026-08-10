@@ -43,16 +43,17 @@ const pricing = {
   },
 };
 
-test("the CLI runs through an npm-style executable symlink", async (t) => {
+test("the CLI runs through the solounit npm executable symlink", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "oneco-bin-symlink-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const executable = join(directory, "oneco");
+  const executable = join(directory, "solounit");
   await symlink(fileURLToPath(new URL("../bin/oneco.mjs", import.meta.url)), executable);
 
   const result = spawnSync(executable, ["--help"], { encoding: "utf8" });
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Usage:\n  oneco doctor/);
+  assert.match(result.stdout, /SoloUnit — private mirrors/);
+  assert.match(result.stdout, /Usage:\n  solounit doctor/);
 });
 
 test("graft runs all mirrors, includes the audit section, and prints the closing", async (t) => {
@@ -97,7 +98,7 @@ test("graft runs all mirrors, includes the audit section, and prints the closing
     output.value,
     /Graft complete: Doctor matched 0 local setup advisories\. Wallet reports \$0\.00 in API-equivalent usage and up to \$0\.00 in potential savings if optimized;/,
   );
-  assert.match(output.value, /Run `oneco dashboard --open` to see all of this as a visual panel\./);
+  assert.match(output.value, /Run `solounit dashboard --open` to see all of this as a visual panel\./);
   assert.doesNotMatch(output.value, /[\u3400-\u9fff]/u);
   assert.equal(errorOutput.value, "");
 });

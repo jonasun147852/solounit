@@ -51,15 +51,17 @@ const dashboardReport = {
   cognition: null,
 };
 
-test("locale resolution follows flag, ONECO_LANG, system locale, and default precedence", () => {
+test("locale resolution follows flag, SoloUnit env aliases, system locale, and default precedence", () => {
   assert.equal(
     resolveLocale(["doctor", "--lang", "en"], {
-      ONECO_LANG: "zh",
+      SOLOUNIT_LANG: "zh",
       LC_ALL: "zh_CN.UTF-8",
     }),
     "en",
   );
-  assert.equal(resolveLocale(["--lang=zh", "doctor"], { ONECO_LANG: "en" }), "zh");
+  assert.equal(resolveLocale(["--lang=zh", "doctor"], { SOLOUNIT_LANG: "en" }), "zh");
+  assert.equal(resolveLocale([], { SOLOUNIT_LANG: "zh", ONECO_LANG: "en" }), "zh");
+  assert.equal(resolveLocale([], { SOLOUNIT_LANG: "en", ONECO_LANG: "zh" }), "en");
   assert.equal(resolveLocale([], { ONECO_LANG: "zh", LANG: "en_US.UTF-8" }), "zh");
   assert.equal(resolveLocale([], { ONECO_LANG: "en", LANG: "zh_CN.UTF-8" }), "en");
   assert.equal(resolveLocale([], { LC_ALL: "zh_CN.UTF-8", LANG: "en_US.UTF-8" }), "zh");
@@ -88,11 +90,13 @@ test("help follows the environment locale and the flag overrides it", async () =
   assert.equal(
     await main(["--lang", "en"], {
       output: englishOutput,
-      environment: { ONECO_LANG: "zh" },
+      environment: { SOLOUNIT_LANG: "zh" },
     }),
     0,
   );
   assert.match(englishOutput.value, /Usage:/);
+  assert.match(englishOutput.value, /SoloUnit — private mirrors/);
+  assert.match(chineseOutput.value, /SoloUnit — 面向智能体高级用户/);
   assert.doesNotMatch(englishOutput.value, CJK);
 });
 
@@ -130,9 +134,13 @@ test("dashboard and wallet card set the HTML language and localize mirror chrome
   assert.match(chineseDashboard, /钱包镜 · Wallet/);
   assert.match(chineseDashboard, /安全镜 · Audit/);
   assert.match(chineseDashboard, /认知镜 · Cognition/);
+  assert.match(englishDashboard, /SoloUnit — local health panel/);
+  assert.match(chineseDashboard, /SoloUnit — 本地健康面板/);
   assert.match(englishWallet, /<html lang="en">/);
   assert.doesNotMatch(englishWallet, CJK);
   assert.match(chineseWallet, /<html lang="zh">/);
   assert.match(chineseWallet, /API 等效用量/);
   assert.match(chineseWallet, /钱包镜 · Wallet/);
+  assert.match(englishWallet, /generated locally by SoloUnit/);
+  assert.match(chineseWallet, /由 SoloUnit 在本地生成/);
 });

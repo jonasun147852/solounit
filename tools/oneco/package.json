@@ -1,17 +1,17 @@
 {
-  "name": "oneco-cli",
+  "name": "solounit",
   "version": "0.2.0",
   "description": "Offline environment and cost mirrors with explicit advisory sync",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jonasun147852/oneco.git",
+    "url": "git+https://github.com/jonasun147852/solounit.git",
     "directory": "tools/oneco"
   },
-  "homepage": "https://github.com/jonasun147852/oneco#readme",
+  "homepage": "https://github.com/jonasun147852/solounit#readme",
   "bugs": {
-    "url": "https://github.com/jonasun147852/oneco/issues"
+    "url": "https://github.com/jonasun147852/solounit/issues"
   },
   "keywords": [
     "claude-code",
@@ -27,7 +27,7 @@
     "README.md"
   ],
   "bin": {
-    "oneco": "./bin/oneco.mjs"
+    "solounit": "./bin/oneco.mjs"
   },
   "engines": {
     "node": ">=22"

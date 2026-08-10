@@ -8,16 +8,16 @@ export const strings = Object.freeze({
     "mirror.wallet": "Wallet",
     "mirror.audit": "Audit",
     "mirror.cognition": "Cognition",
-    "help.text": `oneco — private mirrors for agent power-users
+    "help.text": `SoloUnit — private mirrors for agent power-users
 
 Usage:
-  oneco doctor [--json]
-  oneco audit [--json]
-  oneco wallet [--days 30] [--json]
-  oneco wallet [--days 30] --html [path]
-  oneco dashboard [--out path] [--open]
-  oneco graft [--days 30]
-  oneco sync [--url http://localhost:8787]
+  solounit doctor [--json]
+  solounit audit [--json]
+  solounit wallet [--days 30] [--json]
+  solounit wallet [--days 30] --html [path]
+  solounit dashboard [--out path] [--open]
+  solounit graft [--days 30]
+  solounit sync [--url http://localhost:8787]
 
 Global options:
   --lang <en|zh>  Override the system language.
@@ -44,10 +44,10 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "graft.advisory.other": "local setup advisories",
     "graft.complete": "Graft complete: Doctor matched {matched} {advisoryLabel}. Wallet reports {spend} in API-equivalent usage and up to {waste} in potential savings if optimized; all analysis stayed on this machine.",
     "graft.auditSummary": "{mirror} — {critical} critical, {warning} warning, {info} info.{ending}",
-    "graft.auditDetails": " Run oneco audit for detail.",
+    "graft.auditDetails": " Run solounit audit for detail.",
     "graft.auditClear": " No findings.",
-    "graft.dashboardPrompt": "Run `oneco dashboard --open` to see all of this as a visual panel.",
-    "sync.noUrl": "No advisory hub URL is configured. Run `oneco sync --url http://localhost:8787` or set ONECO_HUB_URL.",
+    "graft.dashboardPrompt": "Run `solounit dashboard --open` to see all of this as a visual panel.",
+    "sync.noUrl": "No advisory hub URL is configured. Run `solounit sync --url http://localhost:8787` or set SOLOUNIT_HUB_URL.",
     "sync.httpFailure": "Advisory sync failed with HTTP {status}.",
     "sync.invalidJson": "Advisory sync returned invalid JSON.",
     "sync.complete.one": "Fetched {count} advisory. Advisory cache last updated {updatedAt}.",
@@ -103,12 +103,12 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "wallet.fix": "Fix: {fix}",
     "wallet.savingsSummary": "{label} (capped at API-equivalent usage): {amount}.",
     "wallet.unknownDate": "Unknown date",
-    "wallet.cardTitle": "oneco wallet card",
-    "wallet.cardEyebrow": "oneco wallet",
+    "wallet.cardTitle": "SoloUnit wallet card",
+    "wallet.cardEyebrow": "SoloUnit wallet",
     "wallet.cardPeriod": "Last {days} days · {from} – {to}",
     "wallet.cardSpendHeading": "Spend by model",
     "wallet.cardWasteHeading": "Waste buckets · estimates",
-    "wallet.cardFooter": "generated locally by oneco — nothing left this machine",
+    "wallet.cardFooter": "generated locally by SoloUnit — nothing left this machine",
     "wallet.written": "Wallet card written to {path}",
     "wallet.error": "The local wallet report could not be completed.",
     "audit.kind.anthropic": "Anthropic key",
@@ -126,7 +126,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "audit.readFailedReason": "The regular file could not be read.",
     "audit.invalidJsonWhat": "A configuration file contains invalid JSON",
     "audit.invalidJsonWhy": "Malformed configuration cannot be checked for risky access.",
-    "audit.invalidJsonFix": "Repair the JSON and run oneco audit again.",
+    "audit.invalidJsonFix": "Repair the JSON and run solounit audit again.",
     "audit.projectListReason": "A project directory could not be listed during the bounded scan.",
     "audit.hookNetworkReason": "it invokes network-capable executable(s): {executables}",
     "audit.hookOutsideReason": "it references a path outside the user home",
@@ -168,7 +168,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "audit.failedWhat": "The local audit could not be completed",
     "audit.failedWhere": "documented local audit locations",
     "audit.failedWhy": "An internal failure prevented a complete access review.",
-    "audit.failedFix": "Retry the command; if it repeats, inspect the local oneco installation.",
+    "audit.failedFix": "Retry the command; if it repeats, inspect the local SoloUnit installation.",
     "dashboard.unknownTime": "Unknown time",
     "dashboard.noFixSteps": "No fix steps supplied.",
     "dashboard.advisory": "Advisory",
@@ -205,11 +205,11 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "dashboard.comingSoon": "Coming soon",
     "dashboard.cognitionPlaceholder": "The cognition mirror is not implemented yet. This space is reserved for its local summary.",
     "dashboard.localSummary": "Local summary",
-    "dashboard.title": "oneco — local health panel",
-    "dashboard.brand": "oneco — local health panel",
+    "dashboard.title": "SoloUnit — local health panel",
+    "dashboard.brand": "SoloUnit — local health panel",
     "dashboard.generated": "Generated {time}",
     "dashboard.trust": "Everything on this page was computed locally. Nothing left this machine.",
-    "dashboard.footer": "oneco local health panel · generated for this machine only",
+    "dashboard.footer": "SoloUnit local health panel · generated for this machine only",
     "dashboard.written": "Dashboard written to {path}",
     "dashboard.opened": "Opened {path}",
   }),
@@ -218,16 +218,16 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "mirror.wallet": "钱包镜 · Wallet",
     "mirror.audit": "安全镜 · Audit",
     "mirror.cognition": "认知镜 · Cognition",
-    "help.text": `oneco — 面向智能体高级用户的隐私镜像
+    "help.text": `SoloUnit — 面向智能体高级用户的隐私镜像
 
 用法：
-  oneco doctor [--json]
-  oneco audit [--json]
-  oneco wallet [--days 30] [--json]
-  oneco wallet [--days 30] --html [path]
-  oneco dashboard [--out path] [--open]
-  oneco graft [--days 30]
-  oneco sync [--url http://localhost:8787]
+  solounit doctor [--json]
+  solounit audit [--json]
+  solounit wallet [--days 30] [--json]
+  solounit wallet [--days 30] --html [path]
+  solounit dashboard [--out path] [--open]
+  solounit graft [--days 30]
+  solounit sync [--url http://localhost:8787]
 
 全局选项：
   --lang <en|zh>  覆盖系统语言。
@@ -254,10 +254,10 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "graft.advisory.other": "条本地设置建议",
     "graft.complete": "Graft 完成：修理镜匹配了 {matched} {advisoryLabel}。钱包镜报告的 API 等效用量为 {spend}，优化后最多可节省 {waste}；所有分析均留在本机。",
     "graft.auditSummary": "{mirror} — {critical} 个严重项、{warning} 个警告、{info} 个信息项。{ending}",
-    "graft.auditDetails": "运行 oneco audit 查看详情。",
+    "graft.auditDetails": "运行 solounit audit 查看详情。",
     "graft.auditClear": "没有发现问题。",
-    "graft.dashboardPrompt": "运行 `oneco dashboard --open` 在可视化面板中查看全部结果。",
-    "sync.noUrl": "未配置建议中心 URL。请运行 `oneco sync --url http://localhost:8787` 或设置 ONECO_HUB_URL。",
+    "graft.dashboardPrompt": "运行 `solounit dashboard --open` 在可视化面板中查看全部结果。",
+    "sync.noUrl": "未配置建议中心 URL。请运行 `solounit sync --url http://localhost:8787` 或设置 SOLOUNIT_HUB_URL。",
     "sync.httpFailure": "建议同步失败，HTTP 状态码为 {status}。",
     "sync.invalidJson": "建议同步返回了无效 JSON。",
     "sync.complete.one": "已获取 {count} 条建议。建议缓存最后更新于 {updatedAt}。",
@@ -313,12 +313,12 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "wallet.fix": "修复：{fix}",
     "wallet.savingsSummary": "{label}（不超过 API 等效用量）：{amount}。",
     "wallet.unknownDate": "未知日期",
-    "wallet.cardTitle": "oneco 钱包卡片",
+    "wallet.cardTitle": "SoloUnit 钱包卡片",
     "wallet.cardEyebrow": "钱包镜 · Wallet",
     "wallet.cardPeriod": "过去 {days} 天 · {from} – {to}",
     "wallet.cardSpendHeading": "按模型划分的用量",
     "wallet.cardWasteHeading": "浪费项 · 估算",
-    "wallet.cardFooter": "由 oneco 在本地生成 — 没有任何数据离开本机",
+    "wallet.cardFooter": "由 SoloUnit 在本地生成 — 没有任何数据离开本机",
     "wallet.written": "钱包卡片已写入 {path}",
     "wallet.error": "无法完成本地钱包报告。",
     "audit.kind.anthropic": "Anthropic 密钥",
@@ -336,7 +336,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "audit.readFailedReason": "无法读取该普通文件。",
     "audit.invalidJsonWhat": "配置文件包含无效 JSON",
     "audit.invalidJsonWhy": "无法检查格式错误的配置是否存在风险访问。",
-    "audit.invalidJsonFix": "修复 JSON 后重新运行 oneco audit。",
+    "audit.invalidJsonFix": "修复 JSON 后重新运行 solounit audit。",
     "audit.projectListReason": "有一个项目目录在有界扫描中无法列出。",
     "audit.hookNetworkReason": "它调用了具有网络能力的可执行文件：{executables}",
     "audit.hookOutsideReason": "它引用了用户主目录之外的路径",
@@ -378,7 +378,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "audit.failedWhat": "无法完成本地安全审核",
     "audit.failedWhere": "已记录的本地安全审核位置",
     "audit.failedWhy": "内部故障导致无法完成全面访问审查。",
-    "audit.failedFix": "重试该命令；如果问题重复出现，请检查本地 oneco 安装。",
+    "audit.failedFix": "重试该命令；如果问题重复出现，请检查本地 SoloUnit 安装。",
     "dashboard.unknownTime": "未知时间",
     "dashboard.noFixSteps": "未提供修复步骤。",
     "dashboard.advisory": "建议",
@@ -415,11 +415,11 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "dashboard.comingSoon": "即将推出",
     "dashboard.cognitionPlaceholder": "认知镜尚未实现。此区域为其本地摘要预留。",
     "dashboard.localSummary": "本地摘要",
-    "dashboard.title": "oneco — 本地健康面板",
-    "dashboard.brand": "oneco — 本地健康面板",
+    "dashboard.title": "SoloUnit — 本地健康面板",
+    "dashboard.brand": "SoloUnit — 本地健康面板",
     "dashboard.generated": "生成于 {time}",
     "dashboard.trust": "本页所有内容均在本地计算。没有任何数据离开本机。",
-    "dashboard.footer": "oneco 本地健康面板 · 仅为本机生成",
+    "dashboard.footer": "SoloUnit 本地健康面板 · 仅为本机生成",
     "dashboard.written": "面板已写入 {path}",
     "dashboard.opened": "已打开 {path}",
   }),
@@ -428,7 +428,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
 let activeLocale = ENGLISH;
 
 function environmentLocale(env = {}) {
-  const explicit = env.ONECO_LANG;
+  const explicit = env.SOLOUNIT_LANG || env.ONECO_LANG;
   if (explicit) return String(explicit).toLowerCase().startsWith("zh") ? CHINESE : ENGLISH;
   const system = env.LC_ALL || env.LC_MESSAGES || env.LANG || "";
   return String(system).toLowerCase().startsWith("zh") ? CHINESE : ENGLISH;

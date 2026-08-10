@@ -1,5 +1,5 @@
 {
-  "name": "oneco-repository",
+  "name": "solounit-repository",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
@@ -8,6 +8,6 @@
   },
   "scripts": {
     "test": "node --test tools/oneco/tests/",
-    "test:oneco": "node --test tools/oneco/tests/"
+    "test:solounit": "node --test tools/oneco/tests/"
   }
 }

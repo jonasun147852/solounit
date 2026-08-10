@@ -8,7 +8,7 @@ import { t } from "./i18n.mjs";
 export async function syncAdvisories(options = {}) {
   const locale = options.locale || "en";
   const environment = options.environment ?? process.env;
-  const baseUrl = options.url || environment.ONECO_HUB_URL;
+  const baseUrl = options.url || environment.SOLOUNIT_HUB_URL || environment.ONECO_HUB_URL;
   if (!baseUrl) {
     throw new Error(t("sync.noUrl", { locale }));
   }

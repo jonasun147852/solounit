@@ -438,6 +438,7 @@ export function renderDashboard(report, locale = report?.locale || "en") {
 export function dashboardHtmlPath(path, options = {}) {
   const home = options.homeDirectory || homedir();
   const workingDirectory = options.cwd || process.cwd();
+  // ".oneco" is the internal codename; keep it for compatibility with existing installs.
   if (!path) return join(home, ".oneco", "dashboard.html");
   if (path === "~") return home;
   if (path.startsWith("~/")) return resolve(home, path.slice(2));
