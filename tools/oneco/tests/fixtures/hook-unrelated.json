@@ -1,0 +1,6 @@
+{
+  "tool_name": "Bash",
+  "tool_response": {
+    "error": "Command exited with status 2: unknown option --wat"
+  }
+}

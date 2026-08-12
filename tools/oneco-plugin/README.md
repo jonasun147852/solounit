@@ -2,7 +2,7 @@
 
 The emergency-room layer of the SoloUnit mirrors. Two things:
 
-1. **Emergency triage hook** (`PostToolUseFailure`): when a tool call fails inside a Claude Code session, the hook matches the failure against locally cached advisories (bundled seed + `~/.oneco/advisories.json` from `solounit sync`). On a hit, Claude tells the user in one sentence that this is a known issue and what the verified fix is. Repeats of the same advisory are suppressed for 10 minutes. Fail-safe contract: the hook exits 0 silently on any internal error and never uses the network.
+1. **Emergency triage hook** (`PostToolUseFailure`): when a tool call fails inside a Claude Code session, the hook matches the live error content against locally cached advisory signals (bundled advisories + `~/.oneco/advisories.json` from `solounit sync`). Event-triggered drafts are labeled and appear only after their error occurs; they never appear in the proactive doctor scan. On a hit, Claude tells the user in one sentence that this is a known issue and what its documented fix is. Repeats of the same advisory are suppressed for 10 minutes. Fail-safe contract: the hook exits 0 silently on any internal error and never uses the network.
 2. **Slash commands**: `/solounit:graft`, `/solounit:doctor`, `/solounit:wallet`, `/solounit:sync` — thin wrappers over the CLI in `../oneco/`.
 
 ## Install (local dev)

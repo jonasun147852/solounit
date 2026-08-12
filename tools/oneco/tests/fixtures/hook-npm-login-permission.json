@@ -1,0 +1,8 @@
+{
+  "tool_name": "npm_login",
+  "permission_mode": "preview",
+  "harness_note": "permission browser metadata must not be treated as a failure",
+  "tool_response": {
+    "error": "npm login failed: permission denied for the requested registry account"
+  }
+}

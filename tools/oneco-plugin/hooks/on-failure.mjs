@@ -23,7 +23,9 @@ function readStdin() {
 function loadAdvisories(pluginRoot) {
   const sources = [
     join(pluginRoot, "advisories", "seed.json"),
+    join(pluginRoot, "advisories", "mined-draft.json"),
     join(pluginRoot, "..", "oneco", "src", "advisories", "seed.json"),
+    join(pluginRoot, "..", "oneco", "src", "advisories", "mined-draft.json"),
     // ".oneco" is the internal codename; keep it for compatibility with existing installs.
     join(homedir(), ".oneco", "advisories.json"),
   ];
@@ -43,37 +45,38 @@ function loadAdvisories(pluginRoot) {
   return [...byId.values()];
 }
 
-// Keyword classes let one advisory match many phrasings of the same wound.
-// `guard` (optional) must ALSO match, scoping broad words to their context —
-// first live firing (2026-08-10) hit a false positive: "permission" matched
-// harness metadata on an npm auth error. Match narrowly; silence is cheaper
-// than a wrong diagnosis (alert habituation taxes every future alert).
-const ERROR_SIGNALS = {
-  "credential-refresh-retry-loop": { patterns: [/\b401\b/, /unauthorized/i, /authentication failed/i] },
-  "gateway-retry-storm": { patterns: [/\b502\b/, /\b503\b/, /bad gateway/i, /upstream/i] },
-  "mcp-health-connection-failure": {
-    patterns: [/econnrefused/i, /connect(ion)? (failed|refused|error)/i, /health check/i],
-  },
-  "preview-start-permission-state": {
-    patterns: [/permission/i, /not permitted/i, /eperm/i],
-    guard: /preview|browser/i,
-  },
-};
+// Signals are literal fragments from real errors, not regular expressions.
+// Both event-triggered advisories and environment-state advisories may opt in
+// to failure matching by carrying at least one match signal.
+function matchAdvisories(advisories, haystack) {
+  const normalizedHaystack = haystack.toLowerCase();
+  return advisories.filter((advisory) => {
+    const signals = Array.isArray(advisory.match_signals) ? advisory.match_signals : [];
+    return signals.some(
+      (signal) =>
+        typeof signal === "string" &&
+        signal.length > 0 &&
+        normalizedHaystack.includes(signal.toLowerCase()),
+    );
+  });
+}
 
-function matchAdvisories(advisories, haystack, toolName) {
-  const hits = [];
-  const scope = `${toolName}\n${haystack}`;
-  for (const advisory of advisories) {
-    const entry = ERROR_SIGNALS[advisory.error_class] ?? { patterns: [] };
-    const nameHit =
-      advisory.affected?.name &&
-      advisory.affected.name !== "claude-code" &&
-      toolName.toLowerCase().includes(advisory.affected.name.toLowerCase());
-    const guardOk = !entry.guard || entry.guard.test(scope);
-    const signalHit = guardOk && entry.patterns.some((pattern) => pattern.test(haystack));
-    if (signalHit || (nameHit && entry.patterns.length === 0)) hits.push(advisory);
+function failureContent(raw) {
+  let event;
+  try {
+    event = JSON.parse(raw);
+  } catch {
+    // Plain-text stdin is itself the failure content; retain this fail-safe path.
+    return raw.slice(0, 20_000);
   }
-  return hits;
+
+  // Never scan the whole event envelope. Harness metadata can contain broad
+  // signal words unrelated to the live failure (the original false positive).
+  return [event.tool_response, event.error, event.tool_error]
+    .filter((value) => value !== undefined && value !== null)
+    .map((value) => (typeof value === "string" ? value : JSON.stringify(value)))
+    .join("\n")
+    .slice(0, 20_000);
 }
 
 function loadSuppressions(file) {
@@ -90,20 +93,10 @@ function main() {
   const raw = readStdin();
   if (!raw) return;
 
-  let event = {};
-  try {
-    event = JSON.parse(raw);
-  } catch {
-    // Unparseable event: still try a plain-text match below.
-  }
-  const toolName = String(event.tool_name ?? "");
-  // Match against the failure content only — never the whole event envelope,
-  // whose harness metadata contains words like "permission" that poison
-  // keyword matching (root cause of the first live false positive).
-  const errorBody = event.tool_response ?? event.error ?? event.tool_error ?? null;
-  const haystack = (errorBody ? JSON.stringify(errorBody) : raw).slice(0, 20_000);
+  const haystack = failureContent(raw);
+  if (!haystack) return;
 
-  const hits = matchAdvisories(loadAdvisories(pluginRoot), haystack, toolName);
+  const hits = matchAdvisories(loadAdvisories(pluginRoot), haystack);
   if (!hits.length) return;
 
   const stateDir = join(homedir(), ".oneco");
@@ -126,7 +119,8 @@ function main() {
 
   const lines = fresh.map((advisory) => {
     const fix = (advisory.fix_steps ?? []).join(" → ");
-    return `${advisory.id}: ${advisory.summary} Fix: ${fix}`;
+    const status = advisory.status === "draft" ? " [draft]" : "";
+    return `${advisory.id}${status}: ${advisory.summary} Fix: ${fix}`;
   });
   const context = [
     "SoloUnit emergency triage (local advisory match — this failure is a known issue, not something the user did wrong):",

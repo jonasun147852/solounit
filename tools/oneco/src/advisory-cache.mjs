@@ -4,6 +4,10 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { t } from "./i18n.mjs";
 
 export const DEFAULT_ADVISORIES_URL = new URL("./advisories/seed.json", import.meta.url);
+export const DEFAULT_MINED_ADVISORIES_URL = new URL(
+  "./advisories/mined-draft.json",
+  import.meta.url,
+);
 
 const ADVISORY_FIELDS = [
   "id",
@@ -16,8 +20,11 @@ const ADVISORY_FIELDS = [
   "source",
   "status",
   "published",
+  "match_signals",
+  "trigger",
 ];
 const ADVISORY_STATUSES = new Set(["draft", "published", "withdrawn"]);
+const ADVISORY_TRIGGERS = new Set(["environment", "event"]);
 
 export function advisoryCachePath(homeDirectory = homedir()) {
   // ".oneco" is the internal codename; keep it for compatibility with existing installs.
@@ -39,7 +46,7 @@ export function validateAdvisory(value, path = "advisory") {
     invalid(`${path}.status`, t("validation.status"));
   }
 
-  return {
+  const advisory = {
     id,
     affected: {
       name: stringValue(affected.name, `${path}.affected.name`, 1, 120),
@@ -54,6 +61,23 @@ export function validateAdvisory(value, path = "advisory") {
     status: input.status,
     published: calendarDate(input.published, `${path}.published`),
   };
+  if (input.match_signals !== undefined) {
+    advisory.match_signals = stringArray(
+      input.match_signals,
+      `${path}.match_signals`,
+      1,
+      64,
+      500,
+    );
+  }
+  if (input.trigger !== undefined) {
+    const trigger = stringValue(input.trigger, `${path}.trigger`, 1, 40);
+    if (!ADVISORY_TRIGGERS.has(trigger)) {
+      invalid(`${path}.trigger`, t("validation.trigger"));
+    }
+    advisory.trigger = trigger;
+  }
+  return advisory;
 }
 
 export function validateAdvisoryList(value, path = "advisories") {
@@ -76,12 +100,19 @@ export function mergeAdvisories(bundled, cached) {
 }
 
 export async function loadAdvisorySources(options = {}) {
-  const seedUrl = options.seedUrl || DEFAULT_ADVISORIES_URL;
+  const bundledUrls = options.seedUrl
+    ? [options.seedUrl]
+    : [DEFAULT_ADVISORIES_URL, DEFAULT_MINED_ADVISORIES_URL];
   const cachePath = options.cachePath || advisoryCachePath(options.homeDirectory);
-  const bundled = validateAdvisoryList(
-    JSON.parse(await readFile(seedUrl, "utf8")),
-    "bundled_advisories",
+  const bundledLists = await Promise.all(
+    bundledUrls.map(async (url, index) =>
+      validateAdvisoryList(
+        JSON.parse(await readFile(url, "utf8")),
+        `bundled_advisories.${index}`,
+      ),
+    ),
   );
+  const bundled = mergeAdvisories([], bundledLists.flat());
   const cache = await readAdvisoryCache(cachePath);
   return {
     advisories: mergeAdvisories(bundled, cache.advisories),

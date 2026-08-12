@@ -57,7 +57,7 @@ claude plugin install solounit@solounit
 
 Slash commands: `/solounit:graft` · `/solounit:doctor` · `/solounit:wallet` · `/solounit:sync`
 
-`doctor` reports only advisories that match the installed tool, version range, and every required fingerprint dimension. A doctor report always exits with status 0 because it is a mirror, not a CI gate. The bundled seed entries are marked `draft` for operator review and cite scrubbed transcript filename/line evidence.
+`doctor` proactively reports only environment-state advisories that match the installed tool, version range, and every required fingerprint dimension. Event-triggered advisories are excluded from doctor and can surface only when the plugin hook sees one of their literal signals in live failure content. A doctor report always exits with status 0 because it is a mirror, not a CI gate. Draft entries are labeled for operator review and cite scrubbed evidence or their source issue.
 
 `audit` performs a bounded, local security review and always exits with status 0 because its findings are a report, not a CI gate. It inventories configured MCP servers, plugins, and skills; lists hook commands; detects hooks that use network-capable binaries or paths outside the user home; checks credential-shaped values without printing them; reviews broad permission allowlists; checks credential-candidate file modes; and matches installed names against the bundled known-bad seed. Terminal and JSON findings have the same `severity`, `id`, `what`, `where`, `why`, and `fix` fields.
 

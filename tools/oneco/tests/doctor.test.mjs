@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   advisoryMatches,
+  createDoctorReport,
   loadAdvisories,
   matchAdvisories,
   satisfiesVersion,
@@ -87,6 +88,24 @@ test("MCP wildcard advisories match installed names while versioned unknown inst
   assert.deepEqual(matchAdvisories(fingerprint(), [wildcard, versioned, missing]), [wildcard]);
 });
 
+test("doctor never proactively matches event-triggered advisories", () => {
+  const environmentAdvisory = advisory(
+    { name: "claude-code", versions: "*" },
+    ["claude:*"],
+  );
+  const eventAdvisory = {
+    ...environmentAdvisory,
+    id: "EVENT-1",
+    trigger: "event",
+    match_signals: ["API Error: 529"],
+  };
+
+  assert.deepEqual(
+    matchAdvisories(fingerprint(), [environmentAdvisory, eventAdvisory]),
+    [environmentAdvisory],
+  );
+});
+
 test("doctor merges the offline cache by ID and the cached version wins", async () => {
   const homeDirectory = await mkdtemp(join(tmpdir(), "oneco-doctor-"));
   const seedUrl = new URL("../src/advisories/seed.json", import.meta.url);
@@ -118,7 +137,7 @@ test("doctor merges the offline cache by ID and the cached version wins", async 
   }
 });
 
-test("doctor loads the bundled seed offline when no cache exists", async () => {
+test("doctor loads both offline bundles but scans only environment-state advisories", async () => {
   const homeDirectory = await mkdtemp(join(tmpdir(), "oneco-doctor-empty-"));
   const originalFetch = globalThis.fetch;
   globalThis.fetch = () => {
@@ -126,7 +145,24 @@ test("doctor loads the bundled seed offline when no cache exists", async () => {
   };
   try {
     const loaded = await loadAdvisories(undefined, { homeDirectory });
-    assert.equal(loaded.length, 4);
+    const eventAdvisories = loaded.filter((entry) => entry.trigger === "event");
+    assert.equal(loaded.length, 21);
+    assert.equal(eventAdvisories.length, 17);
+    assert.ok(eventAdvisories.every((entry) => entry.status === "draft"));
+
+    const report = await createDoctorReport({
+      fingerprint: fingerprint(),
+      advisories: loaded,
+      now: new Date("2026-08-12T12:00:00.000Z"),
+    });
+    assert.equal(report.summary.advisories_scanned, 4);
+    const proactiveOutput = JSON.stringify(report);
+    assert.ok(
+      report.advisories.every((entry) => !eventAdvisories.some((draft) => draft.id === entry.id)),
+    );
+    for (const advisory of eventAdvisories) {
+      assert.doesNotMatch(proactiveOutput, new RegExp(advisory.id));
+    }
   } finally {
     globalThis.fetch = originalFetch;
     await rm(homeDirectory, { recursive: true, force: true });

@@ -156,7 +156,9 @@ export function advisoryMatches(fingerprint, advisory) {
 }
 
 export function matchAdvisories(fingerprint, advisories) {
-  return advisories.filter((advisory) => advisoryMatches(fingerprint, advisory));
+  return advisories.filter(
+    (advisory) => advisory.trigger !== "event" && advisoryMatches(fingerprint, advisory),
+  );
 }
 
 export async function loadAdvisories(advisoriesUrl, options = {}) {
@@ -175,7 +177,8 @@ export async function createDoctorReport(options = {}) {
     cachePath: options.cachePath,
     homeDirectory: options.homeDirectory,
   }));
-  const matched = matchAdvisories(fingerprint, advisories);
+  const proactiveAdvisories = advisories.filter((advisory) => advisory.trigger !== "event");
+  const matched = matchAdvisories(fingerprint, proactiveAdvisories);
   const now = options.now || new Date();
 
   return {
@@ -185,7 +188,7 @@ export async function createDoctorReport(options = {}) {
     privacy: "local-only",
     fingerprint,
     summary: {
-      advisories_scanned: advisories.length,
+      advisories_scanned: proactiveAdvisories.length,
       matched: matched.length,
     },
     advisories: matched,
