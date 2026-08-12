@@ -1,10 +1,18 @@
 {
   "currency": "USD",
   "unit": "per_million_tokens",
-  "published_as_of": "2026-08-09",
-  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "published_as_of": "2026-08-12",
+  "source": "Bundled official Anthropic and OpenAI API list prices",
+  "sources": {
+    "anthropic": "https://platform.claude.com/docs/en/about-claude/pricing",
+    "openai": "https://developers.openai.com/api/docs/models"
+  },
+  "unpriced_models": {
+    "codex-auto-review": "Internal Codex identifier with no published API list price; kept unpriced."
+  },
   "models": {
     "claude-fable-5": {
+      "provider": "anthropic",
       "input": 10,
       "cache_write_5m": 12.5,
       "cache_write_1h": 20,
@@ -13,6 +21,7 @@
       "tier": 4
     },
     "claude-opus-5": {
+      "provider": "anthropic",
       "input": 5,
       "cache_write_5m": 6.25,
       "cache_write_1h": 10,
@@ -21,6 +30,7 @@
       "tier": 3
     },
     "claude-opus-4-8": {
+      "provider": "anthropic",
       "input": 5,
       "cache_write_5m": 6.25,
       "cache_write_1h": 10,
@@ -29,6 +39,7 @@
       "tier": 3
     },
     "claude-sonnet-5": {
+      "provider": "anthropic",
       "input": 2,
       "cache_write_5m": 2.5,
       "cache_write_1h": 4,
@@ -38,12 +49,71 @@
       "price_note": "Introductory pricing through 2026-08-31"
     },
     "claude-haiku-4-5-20251001": {
+      "provider": "anthropic",
       "input": 1,
       "cache_write_5m": 1.25,
       "cache_write_1h": 2,
       "cache_read": 0.1,
       "output": 5,
       "tier": 1
+    },
+    "gpt-5.4": {
+      "provider": "openai",
+      "input": 2.5,
+      "cache_read": 0.25,
+      "output": 15,
+      "tier": 2,
+      "price_source": "https://developers.openai.com/api/docs/models/gpt-5.4",
+      "long_context": {
+        "threshold_tokens": 272000,
+        "input": 5,
+        "cache_read": 0.5,
+        "output": 22.5
+      }
+    },
+    "gpt-5.4-mini": {
+      "provider": "openai",
+      "input": 0.75,
+      "cache_read": 0.075,
+      "output": 4.5,
+      "tier": 1,
+      "price_source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini"
+    },
+    "gpt-5.6-sol": {
+      "provider": "openai",
+      "input": 5,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 6.25,
+      "cache_read": 0.5,
+      "output": 30,
+      "tier": 3,
+      "price_source": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+      "long_context": {
+        "threshold_tokens": 272000,
+        "input": 10,
+        "cache_write_5m": 12.5,
+        "cache_write_1h": 12.5,
+        "cache_read": 1,
+        "output": 45
+      }
+    },
+    "gpt-5.6-terra": {
+      "provider": "openai",
+      "input": 2,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 2.5,
+      "cache_read": 0.2,
+      "output": 12,
+      "tier": 2,
+      "price_source": "https://developers.openai.com/api/docs/models/gpt-5.6-terra",
+      "long_context": {
+        "threshold_tokens": 272000,
+        "input": 4,
+        "cache_write_5m": 5,
+        "cache_write_1h": 5,
+        "cache_read": 0.4,
+        "output": 18
+      }
     }
   }
 }

@@ -121,6 +121,11 @@ function affectedInstallation(fingerprint, name) {
       ? { name: "claude-code", version: fingerprint.claude.version }
       : null;
   }
+  if (normalized === "codex" || normalized === "codex-cli") {
+    return fingerprint.codex?.present
+      ? { name: "codex", version: fingerprint.codex.version }
+      : null;
+  }
   if (normalized === "node") {
     return { name: "node", version: fingerprint.node?.version || null };
   }
@@ -202,6 +207,10 @@ export function renderDoctor(report, locale = report?.locale || "en") {
     t("doctor.environment", {
       locale,
       claude: report.fingerprint.claude.version || t("doctor.notFound", { locale }),
+      codex: report.fingerprint.codex?.version ||
+        (report.fingerprint.codex?.present
+          ? t("doctor.detected", { locale })
+          : t("doctor.notFound", { locale })),
       node: report.fingerprint.node.version,
       platform: report.fingerprint.os.platform,
       arch: report.fingerprint.os.arch,

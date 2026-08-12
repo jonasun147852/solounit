@@ -81,6 +81,30 @@ test("dashboard fixture renders all mirrors locally with masking and key numbers
   assert.equal((html.match(/<script\b/gi) || []).length, 0);
 });
 
+test("dashboard groups a multi-agent wallet by Claude Code and Codex", () => {
+  const report = syntheticReport();
+  report.wallet.by_agent = [
+    {
+      agent: "claude",
+      label: "Claude Code",
+      summary: { total_spend_usd: 40.25 },
+      spend_by_model: [report.wallet.spend_by_model[0]],
+      waste_buckets: [report.wallet.waste_buckets[0]],
+    },
+    {
+      agent: "codex",
+      label: "Codex",
+      summary: { total_spend_usd: 2.5 },
+      spend_by_model: [report.wallet.spend_by_model[1]],
+      waste_buckets: report.wallet.waste_buckets.slice(1),
+    },
+  ];
+  const html = renderDashboard(report);
+  assert.match(html, /Combined API-equivalent usage/);
+  assert.match(html, /Claude Code/);
+  assert.match(html, /Codex/);
+});
+
 test("runDashboard writes the default private file and opens it without a shell", async (t) => {
   const homeDirectory = await mkdtemp(join(tmpdir(), "oneco-dashboard-"));
   t.after(() => rm(homeDirectory, { recursive: true, force: true }));

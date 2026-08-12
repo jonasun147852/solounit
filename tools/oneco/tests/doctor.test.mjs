@@ -11,6 +11,7 @@ import {
   satisfiesVersion,
 } from "../src/doctor.mjs";
 import { writeAdvisoryCache } from "../src/advisory-cache.mjs";
+import { fingerprintDimensions } from "../src/env-scan.mjs";
 
 function fingerprint(overrides = {}) {
   return {
@@ -104,6 +105,13 @@ test("doctor never proactively matches event-triggered advisories", () => {
     matchAdvisories(fingerprint(), [environmentAdvisory, eventAdvisory]),
     [environmentAdvisory],
   );
+});
+
+test("Codex presence contributes a codex fingerprint dimension", () => {
+  const value = fingerprint({ codex: { present: true, version: "1.2.3" } });
+  assert.ok(fingerprintDimensions(value).includes("codex:1.2.3"));
+  value.codex.version = null;
+  assert.ok(fingerprintDimensions(value).includes("codex:detected"));
 });
 
 test("doctor merges the offline cache by ID and the cached version wins", async () => {

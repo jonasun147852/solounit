@@ -110,12 +110,16 @@ function localizedBucketLabel(bucket, locale) {
 
 function walletCard(report, locale) {
   const total = Number(report?.summary?.total_spend_usd) || 0;
-  const models = Array.isArray(report?.spend_by_model) ? report.spend_by_model : [];
-  const modelRows = models.length
-    ? models
+  const agents = Array.isArray(report?.by_agent) ? report.by_agent : [];
+  const multiAgent = agents.length > 1;
+  const modelRowsFor = (breakdown) => {
+    const models = Array.isArray(breakdown?.spend_by_model) ? breakdown.spend_by_model : [];
+    const breakdownTotal = Number(breakdown?.summary?.total_spend_usd) || 0;
+    return models.length
+      ? models
         .map((model) => {
           const value = model.priced === false ? t("dashboard.unpriced", { locale }) : dollars(model.spend_usd);
-          const width = barWidth(model.spend_usd, total).toFixed(2);
+          const width = barWidth(model.spend_usd, breakdownTotal).toFixed(2);
           return `
             <div class="model-row">
               <div class="row-meta"><span>${escapeHtml(model.model || t("dashboard.unknownModel", { locale }), locale)}</span><strong>${escapeHtml(value, locale)}</strong></div>
@@ -125,10 +129,14 @@ function walletCard(report, locale) {
             </div>`;
         })
         .join("")
-    : `<p class="muted empty">${escapeHtml(t("dashboard.noUsage", { locale }), locale)}</p>`;
-  const buckets = (Array.isArray(report?.waste_buckets) ? report.waste_buckets : []).slice(0, 3);
-  const wasteRows = buckets.length
-    ? buckets
+      : `<p class="muted empty">${escapeHtml(t("dashboard.noUsage", { locale }), locale)}</p>`;
+  };
+  const wasteRowsFor = (breakdown) => {
+    const buckets = (
+      Array.isArray(breakdown?.waste_buckets) ? breakdown.waste_buckets : []
+    ).slice(0, 3);
+    return buckets.length
+      ? buckets
         .map(
           (bucket) => `
             <div class="waste-row">
@@ -137,7 +145,22 @@ function walletCard(report, locale) {
             </div>`,
         )
         .join("")
-    : `<p class="muted empty">${escapeHtml(t("dashboard.noSavings", { locale }), locale)}</p>`;
+      : `<p class="muted empty">${escapeHtml(t("dashboard.noSavings", { locale }), locale)}</p>`;
+  };
+  const modelRows = multiAgent
+    ? agents.map((agent) => `
+            <div class="agent-breakdown">
+              <h4>${escapeHtml(agent.label, locale)}</h4>
+              ${modelRowsFor(agent)}
+            </div>`).join("")
+    : modelRowsFor(report);
+  const wasteRows = multiAgent
+    ? agents.map((agent) => `
+            <div class="agent-breakdown">
+              <h4>${escapeHtml(agent.label, locale)}</h4>
+              ${wasteRowsFor(agent)}
+            </div>`).join("")
+    : wasteRowsFor(report);
 
   return `
     <section class="card wallet-card" aria-labelledby="wallet-title">
@@ -149,13 +172,13 @@ function walletCard(report, locale) {
         <span class="count-badge">${escapeHtml(t("dashboard.days", { locale, count: report?.window?.days || 30 }), locale)}</span>
       </div>
       <div class="usage-hero">
-        <span>${escapeHtml(t("wallet.usageLabel", { locale }), locale)}</span>
+        <span>${escapeHtml(t(multiAgent ? "wallet.combinedUsageLabel" : "wallet.usageLabel", { locale }), locale)}</span>
         <strong>${escapeHtml(dollars(total), locale)}</strong>
         <p>${escapeHtml(t("wallet.usageExplainer", { locale }), locale)}</p>
       </div>
       <div class="wallet-sections">
         <div>
-          <h3>${escapeHtml(t("dashboard.spendByModel", { locale }), locale)}</h3>
+          <h3>${escapeHtml(t(multiAgent ? "wallet.byAgent" : "dashboard.spendByModel", { locale }), locale)}</h3>
           <div class="model-list">${modelRows}
           </div>
         </div>
@@ -356,6 +379,9 @@ export function renderDashboard(report, locale = report?.locale || "en") {
     .usage-hero p { margin: 0; color: var(--muted); font-size: 0.72rem; }
     .wallet-sections { display: grid; gap: 22px; }
     .model-list, .waste-list { display: grid; gap: 11px; }
+    .agent-breakdown { display: grid; gap: 11px; }
+    .agent-breakdown + .agent-breakdown { margin-top: 9px; padding-top: 16px; border-top: 1px solid var(--line); }
+    .agent-breakdown h4 { margin: 0; color: var(--text); font-size: 0.76rem; }
     .row-meta, .waste-row { display: flex; justify-content: space-between; gap: 14px; font-size: 0.76rem; }
     .row-meta span, .waste-row span { min-width: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
     .row-meta strong, .waste-row strong { flex: 0 0 auto; font-variant-numeric: tabular-nums; }

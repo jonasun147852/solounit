@@ -4,11 +4,11 @@
 
 **When your agent acts up, run solounit first.**
 
-SoloUnit is a dependency-free CLI with three offline mirrors and a local visual dashboard for Claude Code power-users:
+SoloUnit is a dependency-free CLI with three offline mirrors and a local visual dashboard for Claude Code and Codex power-users:
 
 - **Doctor（修理镜）** compares a local environment fingerprint with bundled, git-versioned advisories.
 - **Audit（安全镜）** reviews granted agent access, hooks, credential exposure, permissions, and local integration names.
-- **Wallet（钱包镜）** turns local Claude Code usage records into an API-equivalent usage and potential-savings report.
+- **Wallet（钱包镜）** turns local Claude Code and Codex usage records into an API-equivalent usage and potential-savings report.
 
 Advisory updates are an explicit, separate action. Only `solounit sync` may use the network; the mirrors never do.
 
@@ -40,6 +40,7 @@ solounit sync --url http://localhost:8787
 solounit wallet
 solounit wallet --days 7
 solounit wallet --days 30 --json
+solounit wallet --agent codex
 solounit wallet --html
 solounit wallet --days 7 --html ./wallet-card.html
 solounit dashboard
@@ -75,7 +76,9 @@ Alternatively, set `SOLOUNIT_HUB_URL`. There is deliberately no built-in server 
 
 Set `SOLOUNIT_LANG=en` or `SOLOUNIT_LANG=zh` to choose a default interface language. The `--lang <en|zh>` flag takes precedence for an individual command.
 
-`wallet` defaults to the last 30 days. It deduplicates split assistant records by Claude message ID, sums input, output, cache-read, five-minute cache-write, and one-hour cache-write tokens per model, then applies the bundled prices in `src/pricing.json`. Unknown models remain visible as unpriced tokens and never stop the report.
+`wallet` defaults to the last 30 days and auto-detects Claude Code and Codex logs. With both present, the combined total appears first and spend/waste details are grouped under **Claude Code** and **Codex**. Use `--agent claude` or `--agent codex` to scope the report. JSON model and waste rows carry an `agent` field.
+
+Claude records are deduplicated by message ID. Codex `token_count` records are cumulative, so wallet computes differences between successive `total_token_usage` snapshots and ignores zero deltas; it never sums repeated cumulative totals or repeated `last_token_usage` values. Cached input is treated as a subset of input, and reasoning output as a subset of output, so neither is double-counted. The normalized input, output, cache-read, and cache-write counts are priced per model from `src/pricing.json`. Unknown or internal-only models remain visible as unpriced tokens and never stop the report.
 
 The headline is **API-equivalent usage**, not an estimated bill: “What this usage would cost at API list prices — subscription users: this is what your plan absorbed, not your bill.” The waste summary is framed as **potential savings if optimized**. Existing JSON price field names remain stable, and the JSON report includes a top-level `framing` object with these labels and the explainer.
 
@@ -93,12 +96,12 @@ The dashboard is fully local: its HTML has inline CSS, no scripts, no links, no 
 
 - They do not use network APIs, sockets, telemetry, DNS lookups, or update checks.
 - No transcript, configuration, fingerprint, token count, or report leaves the machine.
-- Files under `~/.claude` and project configuration files are read-only; SoloUnit never edits them.
+- Files under `~/.claude` and `~/.codex`, plus project configuration files, are read-only; SoloUnit never edits them.
 - Transcript message text and tool payloads are not retained or printed. Wallet keeps only aggregate usage, timestamps, model names, session grouping, retry metadata, and content/tool type markers needed by its heuristics.
 - Doctor never prints configuration commands, environment values, credentials, or MCP configuration payloads.
 - Audit never follows symlinks, prints full credential values, or scans beyond its documented fixed files and bounded `~/Documents` project search.
 
-Doctor may execute the local `claude --version` binary when it is already on `PATH`. All other tool and package-manager detection is a local executable-presence check.
+Doctor may execute the local `claude --version` and `codex --version` binaries when they are already on `PATH`. All other tool and package-manager detection is a local executable-presence check.
 
 `sync` is the sole networked command and runs only when invoked explicitly. It sends only a GET request to the configured advisory endpoint; it does not read or upload environment fingerprints, Claude configuration, transcripts, token counts, or reports.
 
@@ -124,7 +127,7 @@ Audit tolerates every file being absent or malformed and checks only:
 
 The audit scan never searches the full filesystem, plugin payload directories, repository contents, or transcript files.
 
-Wallet recursively reads `*.jsonl` files under `~/.claude/projects/`, including nested subagent and workflow transcripts. Synthetic test fixtures live under `tests/fixtures/`; real transcripts are never copied into this repository.
+Wallet recursively reads `*.jsonl` files under `~/.claude/projects/`, including nested subagent and workflow transcripts. It also reads only `rollout-*.jsonl` under `~/.codex/sessions/` and `~/.codex/archived_sessions/`. Synthetic test fixtures live under `tests/fixtures/` and `tests/fixtures-codex/`; real transcripts are never copied into this repository.
 
 ## Observed transcript format
 

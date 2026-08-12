@@ -3,6 +3,7 @@ import { access, readdir, readFile } from "node:fs/promises";
 import { homedir, platform, release, arch } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { execFile } from "node:child_process";
+import { detectLogSources } from "./log-sources.mjs";
 
 const PACKAGE_MANAGERS = [
   "npm",
@@ -190,6 +191,9 @@ export function fingerprintDimensions(fingerprint) {
   if (fingerprint.claude.version) {
     dimensions.push(`claude:${fingerprint.claude.version}`);
   }
+  if (fingerprint.codex?.present) {
+    dimensions.push(`codex:${fingerprint.codex.version || "detected"}`);
+  }
   for (const server of fingerprint.mcp_servers) dimensions.push(`mcp:${server.name}`);
   for (const plugin of fingerprint.plugins) dimensions.push(`plugin:${plugin.name}`);
   for (const manager of fingerprint.package_managers) {
@@ -232,6 +236,12 @@ export async function scanEnvironment(options = {}) {
   const metadata = commandVersion
     ? null
     : await claudeMetadataVersion(homeDirectory, errors);
+  const codexExecutable = await findExecutable("codex", environment);
+  const codexVersion = codexExecutable
+    ? extractVersion(await runVersionCommand(codexExecutable))
+    : null;
+  const detectedSources = options.detectedSources || await detectLogSources({ homeDirectory });
+  const detectedAgents = new Set(detectedSources.map((source) => source.agent));
 
   const packageManagers = [];
   for (const name of PACKAGE_MANAGERS) {
@@ -240,9 +250,14 @@ export async function scanEnvironment(options = {}) {
 
   const fingerprint = {
     claude: {
-      present: Boolean(claudeExecutable || metadata?.version),
+      present: Boolean(claudeExecutable || metadata?.version || detectedAgents.has("claude")),
       version: commandVersion || metadata?.version || null,
       source: commandVersion ? "claude --version" : metadata?.source || null,
+    },
+    codex: {
+      present: Boolean(codexExecutable || detectedAgents.has("codex")),
+      version: codexVersion,
+      source: codexVersion ? "codex --version" : detectedAgents.has("codex") ? "local logs" : null,
     },
     node: { version: process.versions.node },
     os: {

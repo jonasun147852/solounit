@@ -10,7 +10,15 @@ import { runSync } from "../src/sync.mjs";
 import { runWallet } from "../src/wallet.mjs";
 
 function parseOptions(args, allowed, locale = "en") {
-  const options = { json: false, html: null, days: 30, url: null, out: null, open: false };
+  const options = {
+    json: false,
+    html: null,
+    days: 30,
+    agent: null,
+    url: null,
+    out: null,
+    open: false,
+  };
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === "--json" && allowed.has("json")) {
@@ -24,6 +32,19 @@ function parseOptions(args, allowed, locale = "en") {
     }
     if (argument.startsWith("--days=") && allowed.has("days")) {
       options.days = Number(argument.slice("--days=".length));
+      continue;
+    }
+    if (argument === "--agent" && allowed.has("agent")) {
+      index += 1;
+      if (!args[index] || args[index].startsWith("--")) {
+        throw new Error(t("cli.agentRequired", { locale }));
+      }
+      options.agent = args[index];
+      continue;
+    }
+    if (argument.startsWith("--agent=") && allowed.has("agent")) {
+      options.agent = argument.slice("--agent=".length);
+      if (!options.agent) throw new Error(t("cli.agentRequired", { locale }));
       continue;
     }
     if (argument === "--html" && allowed.has("html")) {
@@ -77,6 +98,9 @@ function parseOptions(args, allowed, locale = "en") {
   if (!Number.isInteger(options.days) || options.days < 1 || options.days > 3_650) {
     throw new Error(t("cli.daysRange", { locale }));
   }
+  if (options.agent && !["claude", "codex"].includes(options.agent)) {
+    throw new Error(t("cli.agentInvalid", { locale }));
+  }
   if (options.json && options.html) {
     throw new Error(t("cli.outputConflict", { locale }));
   }
@@ -119,12 +143,17 @@ export async function main(args = process.argv.slice(2), runtime = {}) {
     }
 
     if (command === "wallet") {
-      const options = parseOptions(commandArgs, new Set(["json", "html", "days"]), locale);
+      const options = parseOptions(
+        commandArgs,
+        new Set(["json", "html", "days", "agent"]),
+        locale,
+      );
       await runWallet({
         ...runtime.walletOptions,
         json: options.json,
         html: options.html,
         days: options.days,
+        agent: options.agent ?? runtime.walletOptions?.agent,
         output,
         locale,
       });
@@ -147,12 +176,13 @@ export async function main(args = process.argv.slice(2), runtime = {}) {
     }
 
     if (command === "graft") {
-      const options = parseOptions(commandArgs, new Set(["days"]), locale);
+      const options = parseOptions(commandArgs, new Set(["days", "agent"]), locale);
       const doctor = await runDoctor({ ...runtime.doctorOptions, output, locale });
       output.write("\n");
       const wallet = await runWallet({
         ...runtime.walletOptions,
         days: options.days,
+        agent: options.agent ?? runtime.walletOptions?.agent,
         output,
         locale,
       });

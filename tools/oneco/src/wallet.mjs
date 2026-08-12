@@ -4,10 +4,10 @@ import { dirname, join, resolve } from "node:path";
 import {
   addUsage,
   emptyUsage,
-  parseClaudeLogs,
   totalTokenCount,
 } from "./claude-logs.mjs";
 import { t } from "./i18n.mjs";
+import { parseDetectedLogSources } from "./log-sources.mjs";
 
 const DEFAULT_PRICING_URL = new URL("./pricing.json", import.meta.url);
 const MILLION = 1_000_000;
@@ -35,7 +35,11 @@ export function modelPrice(model, pricing) {
   if (pricing.models[model]) return pricing.models[model];
   const alias = Object.keys(pricing.models)
     .sort((left, right) => right.length - left.length)
-    .find((name) => model.startsWith(`${name}-`));
+    .find((name) => {
+      if (!model.startsWith(`${name}-`)) return false;
+      const suffix = model.slice(name.length + 1);
+      return /^\d{4}(?:-?\d{2})/.test(suffix);
+    });
   return alias ? pricing.models[alias] : null;
 }
 
@@ -50,13 +54,24 @@ export function priceUsage(usage, price) {
     };
   }
 
-  const baseInput = (usage.input_tokens * price.input) / MILLION;
-  const cacheRead = (usage.cache_read_input_tokens * price.cache_read) / MILLION;
+  const inputTokens = totalTokenCount({ ...emptyUsage(), ...usage }) - usage.output_tokens;
+  const longContext = price.long_context && inputTokens > price.long_context.threshold_tokens
+    ? price.long_context
+    : null;
+  const inputRate = longContext?.input ?? price.input ?? 0;
+  const cacheReadRate = longContext?.cache_read ?? price.cache_read ?? inputRate;
+  const cacheWriteFiveRate =
+    longContext?.cache_write_5m ?? price.cache_write_5m ?? inputRate;
+  const cacheWriteHourRate =
+    longContext?.cache_write_1h ?? price.cache_write_1h ?? cacheWriteFiveRate;
+  const outputRate = longContext?.output ?? price.output ?? 0;
+  const baseInput = (usage.input_tokens * inputRate) / MILLION;
+  const cacheRead = (usage.cache_read_input_tokens * cacheReadRate) / MILLION;
   const cacheWriteFive =
-    (usage.cache_write_5m_input_tokens * price.cache_write_5m) / MILLION;
+    (usage.cache_write_5m_input_tokens * cacheWriteFiveRate) / MILLION;
   const cacheWriteHour =
-    (usage.cache_write_1h_input_tokens * price.cache_write_1h) / MILLION;
-  const output = (usage.output_tokens * price.output) / MILLION;
+    (usage.cache_write_1h_input_tokens * cacheWriteHourRate) / MILLION;
+  const output = (usage.output_tokens * outputRate) / MILLION;
   const inputSide = baseInput + cacheRead + cacheWriteFive + cacheWriteHour;
 
   return {
@@ -102,15 +117,18 @@ function enrichedTurns(turns, pricing) {
   });
 }
 
-function spendSummary(turns, pricing) {
+function spendSummary(turns, pricing, fallbackAgent = "claude") {
   const models = new Map();
   let totalUsage = emptyUsage();
   let totalSpend = 0;
   let unpricedTokens = 0;
 
   for (const turn of turns) {
-    if (!models.has(turn.model)) {
-      models.set(turn.model, {
+    const agent = turn.agent || fallbackAgent;
+    const key = `${agent}\0${turn.model}`;
+    if (!models.has(key)) {
+      models.set(key, {
+        agent,
         model: turn.model,
         turns: 0,
         usage: emptyUsage(),
@@ -119,7 +137,7 @@ function spendSummary(turns, pricing) {
         priced: Boolean(modelPrice(turn.model, pricing)),
       });
     }
-    const model = models.get(turn.model);
+    const model = models.get(key);
     const cost = priceUsage(turn.usage, modelPrice(turn.model, pricing));
     model.turns += 1;
     model.usage = addUsage(model.usage, turn.usage);
@@ -257,14 +275,18 @@ export function estimateContextBloat(turns, pricing) {
 }
 
 export function estimateTierMismatch(turns, pricing) {
+  const pricedTurns = enrichedTurns(turns, pricing);
+  const usedPrices = pricedTurns.map((turn) => turn.price).filter(Boolean);
+  if (usedPrices.length === 0) return { sessions: 0, turns: 0, estimated_usd: 0 };
+  const largestTier = Math.max(...usedPrices.map((price) => price.tier || 0));
   const prices = Object.values(pricing.models);
-  const largestTier = Math.max(...prices.map((price) => price.tier || 0));
-  const fallbackPrice = prices
-    .filter((price) => (price.tier || 0) < largestTier)
+  const fallbackPrice = (actualPrice) => prices
+    .filter((candidate) =>
+      (candidate.tier || 0) < largestTier &&
+      (!actualPrice.provider || !candidate.provider || candidate.provider === actualPrice.provider))
     .sort((left, right) => (right.tier || 0) - (left.tier || 0))[0];
-  if (!fallbackPrice) return { sessions: 0, turns: 0, estimated_usd: 0 };
 
-  const sessions = groupBySession(enrichedTurns(turns, pricing));
+  const sessions = groupBySession(pricedTurns);
   let flaggedSessions = 0;
   let flaggedTurns = 0;
   let estimatedCost = 0;
@@ -284,9 +306,11 @@ export function estimateTierMismatch(turns, pricing) {
     flaggedSessions += 1;
     flaggedTurns += trivialLargestTurns.length;
     for (const turn of trivialLargestTurns) {
+      const fallback = fallbackPrice(turn.price);
+      if (!fallback) continue;
       const actual = turn.cost.total_usd;
-      const fallback = priceUsage(turn.usage, fallbackPrice).total_usd;
-      estimatedCost += Math.max(0, actual - fallback);
+      const alternate = priceUsage(turn.usage, fallback).total_usd;
+      estimatedCost += Math.max(0, actual - alternate);
     }
   }
 
@@ -340,22 +364,113 @@ function wasteBuckets(logs, pricing, locale = "en") {
   ].sort((left, right) => right.estimated_usd - left.estimated_usd);
 }
 
+function diagnosticsSummary(reports) {
+  const total = {
+    files_scanned: 0,
+    malformed_lines: 0,
+    unreadable_files: 0,
+    unreadable_directories: 0,
+  };
+  for (const report of reports) {
+    for (const key of Object.keys(total)) total[key] += report.logs.diagnostics?.[key] || 0;
+  }
+  return total;
+}
+
+function aggregateWasteBuckets(reports, locale) {
+  const buckets = new Map();
+  for (const report of reports) {
+    for (const bucket of report.waste_buckets) {
+      if (!buckets.has(bucket.key)) {
+        buckets.set(bucket.key, { ...bucket, agent: "combined", estimated_usd: 0 });
+      }
+      buckets.get(bucket.key).estimated_usd += bucket.estimated_usd;
+    }
+  }
+  return [...buckets.values()]
+    .map((bucket) => ({ ...bucket, estimated_usd: round(bucket.estimated_usd) }))
+    .sort((left, right) => right.estimated_usd - left.estimated_usd);
+}
+
+function agentReport(source, pricing, locale) {
+  const turns = source.logs.turns.map((turn) => ({ ...turn, agent: source.agent }));
+  const logs = { ...source.logs, turns };
+  const spend = spendSummary(turns, pricing, source.agent);
+  const buckets = wasteBuckets(logs, pricing, locale).map((bucket) => ({
+    ...bucket,
+    agent: source.agent,
+  }));
+  const bucketTotal = buckets.reduce((sum, bucket) => sum + bucket.estimated_usd, 0);
+  return {
+    agent: source.agent,
+    label: t(source.label_key || `agent.${source.agent}`, { locale }),
+    summary: {
+      sessions: new Set(turns.map((turn) => turn.session_id)).size,
+      assistant_turns: turns.length,
+      total_spend_usd: spend.total_spend_usd,
+      estimated_potential_waste_usd: round(Math.min(spend.total_spend_usd, bucketTotal)),
+      unpriced_tokens: spend.unpriced_tokens,
+    },
+    total_usage: spend.total_usage,
+    spend_by_model: spend.by_model,
+    waste_buckets: buckets,
+    diagnostics: source.logs.diagnostics,
+    logs,
+  };
+}
+
+async function walletLogSources(options, since, now) {
+  if (options.logsByAgent) {
+    return Object.entries(options.logsByAgent)
+      .filter(([agent]) => !options.agent || agent === options.agent)
+      .map(([agent, logs]) => ({ agent, label_key: `agent.${agent}`, logs }));
+  }
+  if (options.logs) {
+    const agent = options.agent || "claude";
+    return [{ agent, label_key: `agent.${agent}`, logs: options.logs }];
+  }
+  const detected = await parseDetectedLogSources({
+    agent: options.agent,
+    homeDirectory: options.homeDirectory,
+    claudeLogRoot: options.claudeLogRoot || options.logRoot,
+    codexLogRoots: options.codexLogRoots,
+    detectedSources: options.detectedSources,
+    since,
+    until: now,
+  });
+  if (detected.length > 0) return detected;
+  const agent = options.agent || "claude";
+  return [{
+    agent,
+    label_key: `agent.${agent}`,
+    logs: {
+      turns: [],
+      retries: [],
+      diagnostics: {
+        files_scanned: 0,
+        malformed_lines: 0,
+        unreadable_files: 0,
+        unreadable_directories: 0,
+      },
+    },
+  }];
+}
+
 export async function createWalletReport(options = {}) {
   const locale = options.locale || "en";
   const now = options.now || new Date();
   const days = options.days || 30;
   const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1_000);
   const pricing = options.pricing || (await loadPricing(options.pricingUrl));
-  const logs =
-    options.logs ||
-    (await parseClaudeLogs({
-      logRoot: options.logRoot,
-      since,
-      until: now,
-    }));
-  const spend = spendSummary(logs.turns, pricing);
-  const buckets = wasteBuckets(logs, pricing, locale);
-  const bucketTotal = buckets.reduce((sum, bucket) => sum + bucket.estimated_usd, 0);
+  const sources = await walletLogSources(options, since, now);
+  const byAgent = sources.map((source) => agentReport(source, pricing, locale));
+  const allTurns = byAgent.flatMap((report) => report.logs.turns);
+  const spend = spendSummary(allTurns, pricing);
+  const buckets = aggregateWasteBuckets(byAgent, locale);
+  const agentWasteTotal = byAgent.reduce(
+    (sum, report) => sum + report.summary.estimated_potential_waste_usd,
+    0,
+  );
 
   return {
     mirror: "wallet",
@@ -374,11 +489,12 @@ export async function createWalletReport(options = {}) {
       source: pricing.source,
     },
     summary: {
-      sessions: new Set(logs.turns.map((turn) => turn.session_id)).size,
-      assistant_turns: logs.turns.length,
+      agents: byAgent.length,
+      sessions: byAgent.reduce((sum, report) => sum + report.summary.sessions, 0),
+      assistant_turns: allTurns.length,
       total_spend_usd: spend.total_spend_usd,
       estimated_potential_waste_usd: round(
-        Math.min(spend.total_spend_usd, bucketTotal),
+        Math.min(spend.total_spend_usd, agentWasteTotal),
       ),
       unpriced_tokens: spend.unpriced_tokens,
       estimate_note: t("wallet.estimateNote", { locale }),
@@ -386,7 +502,8 @@ export async function createWalletReport(options = {}) {
     total_usage: spend.total_usage,
     spend_by_model: spend.by_model,
     waste_buckets: buckets,
-    diagnostics: logs.diagnostics,
+    by_agent: byAgent.map(({ logs: _logs, ...report }) => report),
+    diagnostics: diagnosticsSummary(byAgent),
   };
 }
 
@@ -425,6 +542,8 @@ function barWidth(spend, total) {
 
 export function renderWallet(report, locale = report?.locale || "en") {
   const framing = walletFraming(locale);
+  const agents = Array.isArray(report.by_agent) ? report.by_agent : [];
+  const multiAgent = agents.length > 1;
   const lines = [
     t("mirror.wallet", { locale }),
     t("wallet.localReport", { locale }),
@@ -434,7 +553,7 @@ export function renderWallet(report, locale = report?.locale || "en") {
       turns: report.summary.assistant_turns.toLocaleString("en-US"),
       sessions: report.summary.sessions.toLocaleString("en-US"),
     }),
-    `${framing.usage_label}: ${dollars(report.summary.total_spend_usd)}.`,
+    `${multiAgent ? t("wallet.combinedUsageLabel", { locale }) : framing.usage_label}: ${dollars(report.summary.total_spend_usd)}.`,
     framing.usage_explainer,
   ];
 
@@ -447,29 +566,55 @@ export function renderWallet(report, locale = report?.locale || "en") {
     );
   }
 
-  lines.push("", t("wallet.spendByModel", { locale }));
-  if (report.spend_by_model.length === 0) {
-    lines.push(`  ${t("wallet.noUsage", { locale })}`);
-  }
-  for (const model of report.spend_by_model) {
-    const price = model.priced ? dollars(model.spend_usd) : t("wallet.unpriced", { locale });
-    lines.push(
-      `  ${t("wallet.modelRow", {
-        locale,
-        model: model.model,
-        price,
-        tokens: model.total_tokens.toLocaleString("en-US"),
-        turns: model.turns.toLocaleString("en-US"),
-      })}`,
-    );
-  }
+  const appendBreakdown = (breakdown, indent = "") => {
+    lines.push("", `${indent}${t("wallet.spendByModel", { locale })}`);
+    if (breakdown.spend_by_model.length === 0) {
+      lines.push(`${indent}  ${t("wallet.noUsage", { locale })}`);
+    }
+    for (const model of breakdown.spend_by_model) {
+      const price = model.priced ? dollars(model.spend_usd) : t("wallet.unpriced", { locale });
+      lines.push(
+        `${indent}  ${t("wallet.modelRow", {
+          locale,
+          model: model.model,
+          price,
+          tokens: model.total_tokens.toLocaleString("en-US"),
+          turns: model.turns.toLocaleString("en-US"),
+        })}`,
+      );
+    }
+    lines.push("", `${indent}${t("wallet.wasteHeading", { locale })}`);
+    for (const bucket of breakdown.waste_buckets) {
+      lines.push(
+        `${indent}  ${bucket.label}: ${dollars(bucket.estimated_usd)} — ${bucket.evidence}`,
+        `${indent}    ${t("wallet.fix", { locale, fix: bucket.fix })}`,
+      );
+    }
+  };
 
-  lines.push("", t("wallet.wasteHeading", { locale }));
-  for (const bucket of report.waste_buckets) {
-    lines.push(
-      `  ${bucket.label}: ${dollars(bucket.estimated_usd)} — ${bucket.evidence}`,
-      `    ${t("wallet.fix", { locale, fix: bucket.fix })}`,
-    );
+  if (multiAgent) {
+    lines.push("", t("wallet.byAgent", { locale }));
+    for (const agent of agents) {
+      lines.push(
+        "",
+        t("wallet.agentHeading", { locale, agent: agent.label }),
+        t("wallet.agentSummary", {
+          locale,
+          spend: dollars(agent.summary.total_spend_usd),
+          turns: agent.summary.assistant_turns.toLocaleString("en-US"),
+          sessions: agent.summary.sessions.toLocaleString("en-US"),
+        }),
+      );
+      if (agent.summary.unpriced_tokens > 0) {
+        lines.push(t("wallet.unpricedTokens", {
+          locale,
+          tokens: agent.summary.unpriced_tokens.toLocaleString("en-US"),
+        }));
+      }
+      appendBreakdown(agent);
+    }
+  } else {
+    appendBreakdown(report);
   }
   lines.push(
     "",
@@ -486,11 +631,13 @@ export function renderWallet(report, locale = report?.locale || "en") {
 export function renderWalletHtml(report, locale = report?.locale || "en") {
   const framing = walletFraming(locale);
   const total = Number(report.summary.total_spend_usd) || 0;
-  const modelRows = report.spend_by_model.length
-    ? report.spend_by_model
+  const agents = Array.isArray(report.by_agent) ? report.by_agent : [];
+  const multiAgent = agents.length > 1;
+  const modelRowsFor = (breakdown) => breakdown.spend_by_model.length
+    ? breakdown.spend_by_model
         .map((model) => {
           const price = model.priced ? dollars(model.spend_usd) : t("wallet.unpriced", { locale });
-          const width = barWidth(model.spend_usd, total).toFixed(2);
+          const width = barWidth(model.spend_usd, breakdown.summary.total_spend_usd).toFixed(2);
           return `
           <div class="model-row">
             <div class="model-meta">
@@ -504,7 +651,7 @@ export function renderWalletHtml(report, locale = report?.locale || "en") {
         })
         .join("")
     : `<p class="empty">${escapeHtml(t("wallet.noUsage", { locale }))}</p>`;
-  const wasteCards = report.waste_buckets
+  const wasteCardsFor = (breakdown) => breakdown.waste_buckets
     .map(
       (bucket) => `
         <div class="waste-card">
@@ -513,6 +660,20 @@ export function renderWalletHtml(report, locale = report?.locale || "en") {
         </div>`,
     )
     .join("");
+  const modelRows = multiAgent
+    ? agents.map((agent) => `
+        <div class="agent-group">
+          <h3 class="agent-heading">${escapeHtml(agent.label)}</h3>
+          ${modelRowsFor(agent)}
+        </div>`).join("")
+    : modelRowsFor(report);
+  const wasteCards = multiAgent
+    ? agents.map((agent) => `
+        <div class="agent-group">
+          <h3 class="agent-heading">${escapeHtml(agent.label)}</h3>
+          <div class="waste-grid">${wasteCardsFor(agent)}</div>
+        </div>`).join("")
+    : `<div class="waste-grid">${wasteCardsFor(report)}</div>`;
 
   return `<!doctype html>
 <html lang="${locale}">
@@ -582,6 +743,8 @@ export function renderWalletHtml(report, locale = report?.locale || "en") {
     }
     .hero-note { max-width: 560px; margin: 0; color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
     .section + .section { margin-top: 34px; }
+    .agent-group + .agent-group { margin-top: 24px; }
+    .agent-heading { margin: 16px 0 12px; color: var(--text); font-size: 0.92rem; }
     .models { margin-top: 18px; display: grid; gap: 16px; }
     .model-meta { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 7px; }
     .model-name { min-width: 0; overflow: hidden; color: var(--text); font-size: 0.88rem; text-overflow: ellipsis; white-space: nowrap; }
@@ -633,19 +796,18 @@ export function renderWalletHtml(report, locale = report?.locale || "en") {
         }))}</p>
       </header>
       <section class="hero" aria-labelledby="usage-label">
-        <p class="hero-label" id="usage-label">${escapeHtml(framing.usage_label)}</p>
+        <p class="hero-label" id="usage-label">${escapeHtml(multiAgent ? t("wallet.combinedUsageLabel", { locale }) : framing.usage_label)}</p>
         <strong class="hero-number">${escapeHtml(dollars(total))}</strong>
         <p class="hero-note">${escapeHtml(framing.usage_explainer)}</p>
       </section>
       <section class="section" aria-labelledby="models-label">
-        <h2 class="section-title" id="models-label">${escapeHtml(t("wallet.cardSpendHeading", { locale }))}</h2>
+        <h2 class="section-title" id="models-label">${escapeHtml(multiAgent ? t("wallet.byAgent", { locale }) : t("wallet.cardSpendHeading", { locale }))}</h2>
         <div class="models">${modelRows}
         </div>
       </section>
       <section class="section" aria-labelledby="waste-label">
         <h2 class="section-title" id="waste-label">${escapeHtml(t("wallet.cardWasteHeading", { locale }))}</h2>
-        <div class="waste-grid">${wasteCards}
-        </div>
+        ${wasteCards}
         <p class="savings"><strong>${escapeHtml(framing.savings_label)}:</strong> ${escapeHtml(dollars(report.summary.estimated_potential_waste_usd))}</p>
       </section>
     </div>

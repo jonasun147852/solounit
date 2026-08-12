@@ -33,7 +33,7 @@ node solounit/tools/oneco/bin/oneco.mjs graft
 | Mirror | What it tells you |
 | --- | --- |
 | **Doctor** | "4 things in your setup are known-broken — here are the verified fixes." Matches your environment against a curated advisory database. |
-| **Wallet** | "Your agent burned $X (API-equivalent) last month — $Y of it looks like waste." Parses your local Claude Code session logs: retry storms, context bloat, tier mismatch. `--html` renders a shareable card. |
+| **Wallet** | "Your agent burned $X (API-equivalent) last month — $Y of it looks like waste." Auto-detects local Claude Code and Codex logs, groups spend/waste by agent, and supports `--agent claude\|codex`. `--html` renders a shareable card. |
 | **Audit** | "2 plaintext API keys, 1 over-broad permission, 23 MCP servers installed." Reviews the access you've granted your agent. Secrets are always masked. |
 | **Dashboard** | `solounit dashboard --open` — all mirrors as one local HTML panel. |
 

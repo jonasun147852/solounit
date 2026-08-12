@@ -13,10 +13,10 @@ export const strings = Object.freeze({
 Usage:
   solounit doctor [--json]
   solounit audit [--json]
-  solounit wallet [--days 30] [--json]
-  solounit wallet [--days 30] --html [path]
+  solounit wallet [--days 30] [--agent claude|codex] [--json]
+  solounit wallet [--days 30] [--agent claude|codex] --html [path]
   solounit dashboard [--out path] [--open]
-  solounit graft [--days 30]
+  solounit graft [--days 30] [--agent claude|codex]
   solounit sync [--url http://localhost:8787]
 
 Global options:
@@ -25,7 +25,7 @@ Global options:
 Commands:
   doctor  Match this environment against bundled and cached advisories offline.
   audit   Review local agent access, hooks, credentials, and permissions offline.
-  wallet  Report API-equivalent Claude Code usage and potential savings from local logs.
+  wallet  Report API-equivalent agent usage and potential savings from local logs.
   dashboard  Render all local mirrors as a self-contained visual health panel.
   graft   Run doctor and wallet together for the first-run experience.
   sync    Explicitly fetch advisories and update the local cache.
@@ -38,6 +38,8 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "cli.outRequired": "--out requires a value",
     "cli.unknownOption": "Unknown option: {option}",
     "cli.daysRange": "--days must be an integer from 1 to 3650",
+    "cli.agentRequired": "--agent requires claude or codex",
+    "cli.agentInvalid": "--agent must be claude or codex",
     "cli.outputConflict": "--json and --html cannot be used together",
     "cli.unknownCommand": "Unknown command: {command}",
     "graft.advisory.one": "local setup advisory",
@@ -70,8 +72,9 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "validation.timestamp": "must be an ISO-8601 timestamp",
     "validation.invalidData": "Invalid advisory data at {path}: {message}.",
     "doctor.localReport": "Local-only environment report — nothing leaves this machine.",
-    "doctor.environment": "Claude Code {claude} · Node {node} · {platform}/{arch}",
+    "doctor.environment": "Claude Code {claude} · Codex {codex} · Node {node} · {platform}/{arch}",
     "doctor.notFound": "not found",
+    "doctor.detected": "detected from local logs",
     "doctor.matchCount": "{matched} of {scanned} local advisories matched.",
     "doctor.noMatches": "No local advisories matched this environment fingerprint.",
     "doctor.draft": "DRAFT",
@@ -80,6 +83,8 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "doctor.fix": "Fix:",
     "doctor.scanErrors": "Note: {count} optional configuration file(s) could not be parsed.",
     "doctor.error": "The local environment report could not be completed.",
+    "agent.claude": "Claude Code",
+    "agent.codex": "Codex",
     "wallet.usageLabel": "API-equivalent usage",
     "wallet.usageExplainer": "What this usage would cost at API list prices — subscription users: this is what your plan absorbed, not your bill.",
     "wallet.savingsLabel": "Potential savings if optimized",
@@ -94,6 +99,10 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "wallet.tierFix": "Route repetitive, low-output tool work to the next smaller model tier.",
     "wallet.estimateNote": "Potential-savings figures are overlapping heuristics, not billing facts; the combined estimate is capped at API-equivalent usage.",
     "wallet.localReport": "Local-only cost report — transcript content is never printed or transmitted.",
+    "wallet.combinedUsageLabel": "Combined API-equivalent usage",
+    "wallet.byAgent": "By agent:",
+    "wallet.agentHeading": "{agent}",
+    "wallet.agentSummary": "API-equivalent usage: {spend} · {turns} turns · {sessions} sessions.",
     "wallet.periodSummary": "Last {days} day(s): {turns} assistant turns across {sessions} sessions.",
     "wallet.unpricedTokens": "{tokens} tokens used unknown models and remain unpriced.",
     "wallet.spendByModel": "Spend by model:",
@@ -224,10 +233,10 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
 用法：
   solounit doctor [--json]
   solounit audit [--json]
-  solounit wallet [--days 30] [--json]
-  solounit wallet [--days 30] --html [path]
+  solounit wallet [--days 30] [--agent claude|codex] [--json]
+  solounit wallet [--days 30] [--agent claude|codex] --html [path]
   solounit dashboard [--out path] [--open]
-  solounit graft [--days 30]
+  solounit graft [--days 30] [--agent claude|codex]
   solounit sync [--url http://localhost:8787]
 
 全局选项：
@@ -236,7 +245,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
 命令：
   doctor  离线将当前环境与内置及缓存的建议进行匹配。
   audit   离线检查本地智能体访问、钩子、凭据和权限。
-  wallet  基于本地日志报告 Claude Code 的 API 等效用量和潜在节省。
+  wallet  基于本地日志报告智能体的 API 等效用量和潜在节省。
   dashboard  将所有本地镜像渲染为独立的可视化健康面板。
   graft   为首次使用同时运行修理镜和钱包镜。
   sync    显式获取建议并更新本地缓存。
@@ -249,6 +258,8 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "cli.outRequired": "--out 需要一个值",
     "cli.unknownOption": "未知选项：{option}",
     "cli.daysRange": "--days 必须是 1 到 3650 之间的整数",
+    "cli.agentRequired": "--agent 需要 claude 或 codex",
+    "cli.agentInvalid": "--agent 必须是 claude 或 codex",
     "cli.outputConflict": "--json 和 --html 不能同时使用",
     "cli.unknownCommand": "未知命令：{command}",
     "graft.advisory.one": "条本地设置建议",
@@ -281,8 +292,9 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "validation.timestamp": "必须是 ISO-8601 时间戳",
     "validation.invalidData": "建议数据无效，位置 {path}：{message}。",
     "doctor.localReport": "仅本地环境报告 — 没有任何数据离开本机。",
-    "doctor.environment": "Claude Code {claude} · Node {node} · {platform}/{arch}",
+    "doctor.environment": "Claude Code {claude} · Codex {codex} · Node {node} · {platform}/{arch}",
     "doctor.notFound": "未找到",
+    "doctor.detected": "从本地日志检测到",
     "doctor.matchCount": "{scanned} 条本地建议中有 {matched} 条匹配。",
     "doctor.noMatches": "没有本地建议匹配此环境指纹。",
     "doctor.draft": "草稿",
@@ -291,6 +303,8 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "doctor.fix": "修复步骤：",
     "doctor.scanErrors": "注意：有 {count} 个可选配置文件无法解析。",
     "doctor.error": "无法完成本地环境报告。",
+    "agent.claude": "Claude Code",
+    "agent.codex": "Codex",
     "wallet.usageLabel": "API 等效用量",
     "wallet.usageExplainer": "按 API 定价计算这些用量的价值 — 对订阅用户而言，这是套餐吸收的用量，不是您的账单。",
     "wallet.savingsLabel": "优化后潜在节省",
@@ -305,6 +319,10 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "wallet.tierFix": "将重复、低输出的工具工作路由到下一个更小的模型层级。",
     "wallet.estimateNote": "潜在节省数字是可能重叠的启发式估算，而非账单事实；合计估算不超过 API 等效用量。",
     "wallet.localReport": "仅本地成本报告 — 绝不打印或传输对话内容。",
+    "wallet.combinedUsageLabel": "合计 API 等效用量",
+    "wallet.byAgent": "按智能体：",
+    "wallet.agentHeading": "{agent}",
+    "wallet.agentSummary": "API 等效用量：{spend} · {turns} 轮 · {sessions} 个会话。",
     "wallet.periodSummary": "过去 {days} 天：{sessions} 个会话中共有 {turns} 个助手轮次。",
     "wallet.unpricedTokens": "未知模型使用了 {tokens} 个 token，尚未定价。",
     "wallet.spendByModel": "按模型划分的用量：",

@@ -1,7 +1,7 @@
 {
   "name": "solounit",
   "description": "Private mirrors for agent power-users: emergency diagnosis when a tool fails, plus doctor/wallet/graft commands. Everything runs locally; only the explicit /solounit:sync command touches the network.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": {
     "name": "SoloUnit"
   }

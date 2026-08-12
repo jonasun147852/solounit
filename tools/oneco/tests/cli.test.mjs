@@ -217,6 +217,13 @@ test("invalid wallet days fail before reading logs", async () => {
   assert.match(errorOutput.value, /--days must be an integer/);
 });
 
+test("wallet validates the agent scope flag", async () => {
+  const errorOutput = outputBuffer();
+  const exitCode = await main(["wallet", "--agent", "other"], { errorOutput });
+  assert.equal(exitCode, 1);
+  assert.match(errorOutput.value, /--agent must be claude or codex/);
+});
+
 test("wallet --html writes the default local share-card path and prints it", async (t) => {
   const homeDirectory = await mkdtemp(join(tmpdir(), "oneco-wallet-card-"));
   t.after(() => rm(homeDirectory, { recursive: true, force: true }));

@@ -2,6 +2,7 @@ import { lstat, readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
 import { setLocale, t } from "./i18n.mjs";
+import { detectLogSources } from "./log-sources.mjs";
 
 const DEFAULT_REGISTRY_URL = new URL("./security/known-bad-seed.json", import.meta.url);
 const SEVERITIES = ["critical", "warning", "info"];
@@ -570,6 +571,7 @@ export async function createAuditReport(options = {}) {
   const now = options.now || new Date();
   const findings = [];
   const inventories = new Map();
+  const detectedSources = options.detectedSources || await detectLogSources({ homeDirectory });
   const homeConfigurationFiles = [
     { path: join(homeDirectory, ".claude.json"), type: "home-state" },
     { path: join(homeDirectory, ".claude", "settings.json"), type: "home-settings" },
@@ -626,6 +628,7 @@ export async function createAuditReport(options = {}) {
     privacy: "local-only",
     duration_ms: Math.round(elapsed * 100) / 100,
     scope: {
+      agents: detectedSources.map((source) => source.agent),
       home_files: homeConfigurationFiles.map((entry) => displayPath(entry.path, homeDirectory)),
       project_root: displayPath(documentsDirectory, homeDirectory),
       project_max_depth: PROJECT_SCAN_DEPTH,
