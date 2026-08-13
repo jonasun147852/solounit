@@ -822,12 +822,25 @@ export function renderWalletHtml(report, locale = report?.locale || "en") {
     .savings strong { color: var(--text); }
     .empty { margin: 18px 0 0; color: var(--muted); }
     footer { padding: 18px 44px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.76rem; letter-spacing: 0.02em; }
+    /* Narrow screens keep the desktop grouping: the waste buckets stay a
+       three-across category row and the labels keep a shared min-height so the
+       amounts line up. Only the tile scale changes, never the grouping. */
     @media (max-width: 560px) {
       .content { padding: 30px 24px 28px; }
       .hero { padding: 24px 22px; }
-      .waste-grid { grid-template-columns: 1fr; }
-      .waste-label { min-height: 0; }
+      .waste-grid { gap: 8px; }
+      .waste-card { padding: 13px 11px; border-radius: 13px; }
+      .waste-label { min-height: 4.05em; font-size: 0.72rem; }
+      .waste-card strong { margin-top: 9px; font-size: 1.05rem; letter-spacing: -0.02em; }
       footer { padding: 17px 24px; }
+    }
+    @media (max-width: 380px) {
+      .content { padding: 26px 16px 24px; }
+      .waste-grid { gap: 6px; }
+      .waste-card { padding: 11px 9px; }
+      .waste-label { min-height: 4.05em; font-size: 0.67rem; }
+      .waste-card strong { font-size: 0.9rem; letter-spacing: -0.04em; }
+      footer { padding: 16px 16px; }
     }
     @media (prefers-color-scheme: light) {
       :root {
