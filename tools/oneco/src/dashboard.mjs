@@ -411,6 +411,11 @@ export function renderDashboard(report, locale = report?.locale || "en") {
       body { padding: 30px 15px 24px; }
       .page-header { grid-template-columns: 1fr; align-items: start; }
       .trust-badge { max-width: none; text-align: left; }
+    }
+    /* Hold the desktop two-across card grouping down to the width where a pair
+       of mirror cards stops being readable, rather than at the header's
+       breakpoint. */
+    @media (max-width: 640px) {
       .grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 430px) {
