@@ -140,6 +140,72 @@ test("graft localizes every mirror name when Chinese is selected", async (t) => 
   assert.match(output.value, /安全镜 · Audit/);
 });
 
+test("graft continues through audit when wallet throws", async (t) => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "oneco-graft-wallet-throws-"));
+  t.after(() => rm(homeDirectory, { recursive: true, force: true }));
+  const output = outputBuffer();
+  const errorOutput = outputBuffer();
+  const exitCode = await main(["graft"], {
+    output,
+    errorOutput,
+    doctorOptions: {
+      fingerprint,
+      advisories: [],
+      now: new Date("2026-08-09T12:00:00.000Z"),
+    },
+    walletOptions: {
+      pricingUrl: new URL("./fixtures/missing-pricing.json", import.meta.url),
+      homeDirectory,
+      now: new Date("2026-08-09T12:00:00.000Z"),
+    },
+    auditOptions: {
+      homeDirectory,
+      now: new Date("2026-08-09T12:00:00.000Z"),
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match(output.value, /^Doctor$/m);
+  assert.match(output.value, /^Wallet$/m);
+  assert.match(output.value, /Wallet could not read your logs: .+ Run `solounit wallet` for details\./);
+  assert.match(output.value, /^Audit$/m);
+  assert.match(output.value, /Reviewed 0 MCP servers \/ 0 config files, nothing risky found\./);
+  assert.equal(errorOutput.value, "");
+});
+
+test("graft reports absent log paths and per-mirror debug scan counts", async (t) => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "oneco-graft-empty-logs-"));
+  t.after(() => rm(homeDirectory, { recursive: true, force: true }));
+  const output = outputBuffer();
+  const exitCode = await main(["graft", "--debug"], {
+    output,
+    doctorOptions: {
+      fingerprint,
+      advisories: [],
+      now: new Date("2026-08-09T12:00:00.000Z"),
+    },
+    walletOptions: {
+      homeDirectory,
+      pricing,
+      now: new Date("2026-08-09T12:00:00.000Z"),
+    },
+    auditOptions: {
+      homeDirectory,
+      now: new Date("2026-08-09T12:00:00.000Z"),
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match(output.value, /Checked these paths: .*\.claude\/projects.*\.codex\/sessions.*Found no session logs there\./);
+  assert.match(output.value, /Scanned 0 advisories against your fingerprint \(claude 2\.1\.x, codex not found, darwin\)\./);
+  for (const mirror of ["Doctor", "Wallet", "Audit"]) {
+    assert.match(
+      output.value,
+      new RegExp(`\\[debug\\] ${mirror}: directories checked: .+; files found: \\d+; lines parsed: \\d+; lines skipped: \\d+\\.`),
+    );
+  }
+});
+
 test("dashboard accepts a custom output path and runs all implemented mirrors", async (t) => {
   const homeDirectory = await mkdtemp(join(tmpdir(), "oneco-dashboard-cli-"));
   t.after(() => rm(homeDirectory, { recursive: true, force: true }));

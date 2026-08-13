@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -129,6 +129,52 @@ test("Codex fork rollouts exclude inherited parent snapshots", async () => {
   assert.equal(logs.diagnostics.inherited_snapshots_skipped, 1);
 });
 
+test("Codex camel-case usage variants are priced without aborting on unusable lines", async (t) => {
+  const logRoot = await mkdtemp(join(tmpdir(), "oneco-codex-schema-"));
+  t.after(() => rm(logRoot, { recursive: true, force: true }));
+  const records = [
+    "null",
+    JSON.stringify({
+      type: "session_meta",
+      payload: { id: "codex-schema", modelName: "gpt-5.4" },
+    }),
+    JSON.stringify({
+      type: "turn_context",
+      payload: { turn_id: "turn-1", modelId: "gpt-5.4" },
+    }),
+    JSON.stringify({
+      type: "event_msg",
+      timestamp: "2026-08-08T12:00:00.000Z",
+      payload: {
+        type: "token_count",
+        info: {
+          totalTokenUsage: {
+            inputTokens: 100,
+            cachedInputTokens: 20,
+            outputTokens: 10,
+            totalTokens: 110,
+          },
+        },
+      },
+    }),
+  ];
+  await writeFile(join(logRoot, "rollout-schema.jsonl"), `${records.join("\n")}\n`);
+
+  const logs = await parseCodexLogs({
+    logRoot,
+    since: new Date("2026-08-01T00:00:00.000Z"),
+    until: now,
+  });
+
+  assert.equal(logs.turns.length, 1);
+  assert.equal(logs.turns[0].model, "gpt-5.4");
+  assert.equal(logs.turns[0].usage.input_tokens, 80);
+  assert.equal(logs.turns[0].usage.cache_read_input_tokens, 20);
+  assert.equal(logs.turns[0].usage.output_tokens, 10);
+  assert.equal(logs.diagnostics.lines_parsed, 3);
+  assert.equal(logs.diagnostics.lines_skipped, 1);
+});
+
 test("multi-agent wallet groups agents and keeps unknown Codex models unpriced", async () => {
   const pricing = await loadPricing();
   const claude = await parseClaudeLogs({
@@ -188,6 +234,30 @@ test("wallet auto-detects both local log layouts without network access", async 
   }
 });
 
+test("wallet names checked paths and files when logs contain no priced turns", async (t) => {
+  const homeDirectory = await mkdtemp(join(tmpdir(), "oneco-wallet-unpriced-empty-"));
+  t.after(() => rm(homeDirectory, { recursive: true, force: true }));
+  const claudeRoot = join(homeDirectory, ".claude", "projects", "fixture");
+  await mkdir(claudeRoot, { recursive: true });
+  await writeFile(
+    join(claudeRoot, "session.jsonl"),
+    `${JSON.stringify({
+      type: "assistant",
+      timestamp: "2026-08-08T12:00:00.000Z",
+      message: { role: "assistant", model: "claude-sonnet-5" },
+    })}\n`,
+  );
+
+  const report = await createWalletReport({ homeDirectory, now, days: 30 });
+  const terminal = renderWallet(report);
+
+  assert.equal(report.summary.sessions, 0);
+  assert.equal(report.summary.priced_turns, 0);
+  assert.equal(report.diagnostics.files_found, 1);
+  assert.match(terminal, new RegExp(`Checked these paths: ${homeDirectory.replaceAll("/", "\\/")}.*\\.claude\\/projects`));
+  assert.match(terminal, /Saw 1 session log file\(s\), but parsed zero priced turns\./);
+});
+
 test("fixture parsing deduplicates split messages and tolerates malformed JSONL", async () => {
   const logs = await parseClaudeLogs({
     logRoot: fixtureRoot,
@@ -202,6 +272,51 @@ test("fixture parsing deduplicates split messages and tolerates malformed JSONL"
   const splitTurn = logs.turns.find((turn) => turn.id === "fixture-message-1");
   assert.deepEqual(splitTurn.content_types.sort(), ["thinking", "tool_use"]);
   assert.equal(splitTurn.usage.input_tokens, 1_000_000);
+});
+
+test("Claude schema variants skip unusable lines and continue to later priced turns", async (t) => {
+  const logRoot = await mkdtemp(join(tmpdir(), "oneco-wallet-schema-"));
+  t.after(() => rm(logRoot, { recursive: true, force: true }));
+  const logPath = join(logRoot, "schema-variants.jsonl");
+  const lines = [
+    "not-json",
+    "null",
+    JSON.stringify({
+      type: "assistant_message",
+      role: "assistant",
+      createdAt: "2026-08-08T12:00:00.000Z",
+      session_id: "missing-usage",
+      modelId: "claude-sonnet-5",
+    }),
+    JSON.stringify({
+      type: "assistant_message",
+      role: "assistant",
+      createdAt: "2026-08-08T12:01:00.000Z",
+      session_id: "schema-variant",
+      modelId: "claude-sonnet-5",
+      usage: {
+        inputTokens: 100,
+        outputTokens: 20,
+        cachedInputTokens: 30,
+      },
+    }),
+  ];
+  await writeFile(logPath, `${lines.join("\n")}\n`);
+
+  const logs = await parseClaudeLogs({
+    logRoot,
+    since: new Date("2026-08-01T00:00:00.000Z"),
+    until: now,
+  });
+
+  assert.equal(logs.turns.length, 1);
+  assert.equal(logs.turns[0].model, "claude-sonnet-5");
+  assert.equal(logs.turns[0].session_id, "schema-variant");
+  assert.equal(logs.turns[0].usage.input_tokens, 100);
+  assert.equal(logs.turns[0].usage.cache_read_input_tokens, 30);
+  assert.equal(logs.diagnostics.files_found, 1);
+  assert.equal(logs.diagnostics.lines_parsed, 1);
+  assert.equal(logs.diagnostics.lines_skipped, 3);
 });
 
 test("wallet math prices fixture usage and retry storms exactly", async () => {

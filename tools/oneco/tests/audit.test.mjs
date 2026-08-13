@@ -167,6 +167,12 @@ test("the bundled example registry entry is skipped and audit never calls fetch"
     const report = await createAuditReport({ homeDirectory: temporaryDirectory });
     assert.equal(report.scope.network_requests, 0);
     assert.equal(report.findings.some((entry) => entry.id === "registry.known-bad"), false);
+    assert.equal(report.scope.mcp_servers, 0);
+    assert.equal(report.scope.config_files, 0);
+    assert.match(
+      renderAudit(report),
+      /Reviewed 0 MCP servers \/ 0 config files, nothing risky found\./,
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

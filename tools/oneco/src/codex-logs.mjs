@@ -19,6 +19,20 @@ const RAW_USAGE_KEYS = [
   "total_tokens",
 ];
 
+const RAW_USAGE_ALIASES = Object.freeze({
+  input_tokens: ["input_tokens", "inputTokens", "prompt_tokens", "promptTokens"],
+  cached_input_tokens: [
+    "cached_input_tokens",
+    "cachedInputTokens",
+    "cache_read_input_tokens",
+    "cacheReadInputTokens",
+  ],
+  cache_write_input_tokens: ["cache_write_input_tokens", "cacheWriteInputTokens"],
+  output_tokens: ["output_tokens", "outputTokens", "completion_tokens", "completionTokens"],
+  reasoning_output_tokens: ["reasoning_output_tokens", "reasoningOutputTokens"],
+  total_tokens: ["total_tokens", "totalTokens"],
+});
+
 function tokenCount(value) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : 0;
@@ -26,7 +40,13 @@ function tokenCount(value) {
 
 function rawUsage(value) {
   if (!value || typeof value !== "object") return null;
-  return Object.fromEntries(RAW_USAGE_KEYS.map((key) => [key, tokenCount(value[key])]));
+  const usage = Object.fromEntries(
+    RAW_USAGE_KEYS.map((key) => [
+      key,
+      tokenCount(RAW_USAGE_ALIASES[key].map((alias) => value[alias]).find((entry) => entry != null)),
+    ]),
+  );
+  return RAW_USAGE_KEYS.some((key) => usage[key] > 0) ? usage : null;
 }
 
 function usageDelta(previous, current) {
@@ -76,7 +96,10 @@ async function collectRolloutFiles(root, state, cursor = root) {
 }
 
 function timestampOf(record) {
-  const timestamp = Date.parse(record.timestamp || record.payload?.timestamp || "");
+  const timestamp = Date.parse(
+    record.timestamp || record.created_at || record.createdAt || record.payload?.timestamp ||
+      record.payload?.created_at || record.payload?.createdAt || "",
+  );
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
@@ -85,7 +108,21 @@ function inWindow(timestamp, options) {
 }
 
 function sessionIdOf(record, fallback) {
-  return record.payload?.id || record.payload?.session_id || record.session_id || fallback;
+  return record.payload?.id || record.payload?.session_id || record.payload?.sessionId ||
+    record.session_id || record.sessionId || fallback;
+}
+
+function modelOf(value) {
+  return value?.model || value?.model_id || value?.modelId || value?.model_name ||
+    value?.modelName || null;
+}
+
+function cumulativeUsageOf(record) {
+  const info = record.payload?.info;
+  return rawUsage(
+    info?.total_token_usage || info?.totalTokenUsage || record.payload?.total_token_usage ||
+      record.payload?.totalTokenUsage || record.payload?.usage || record.usage,
+  );
 }
 
 function contentType(payload) {
@@ -195,6 +232,11 @@ async function parseFile(file, options, state) {
         record = JSON.parse(line);
       } catch {
         state.malformed_lines += 1;
+        state.lines_skipped += 1;
+        continue;
+      }
+      if (!record || typeof record !== "object" || Array.isArray(record)) {
+        state.lines_skipped += 1;
         continue;
       }
 
@@ -202,14 +244,17 @@ async function parseFile(file, options, state) {
       if (record.type === "session_meta") {
         sessionId = sessionIdOf(record, fallbackSession);
         forkedSession = Boolean(record.payload?.forked_from_id);
-        if (typeof record.payload?.model === "string") activeModel = record.payload.model;
+        const sessionModel = modelOf(record.payload);
+        if (typeof sessionModel === "string") activeModel = sessionModel;
+        state.lines_parsed += 1;
         continue;
       }
       if (record.type === "turn_context") {
         hasTurnContext = true;
         activeTurnId = record.payload?.turn_id || `${sessionId}:turn:${lineNumber}`;
-        if (typeof record.payload?.model === "string") {
-          activeModel = record.payload.model;
+        const turnModel = modelOf(record.payload);
+        if (typeof turnModel === "string") {
+          activeModel = turnModel;
           for (const key of unattributedTurns) {
             const turn = state.turns.get(key);
             if (turn?.model === "unknown") turn.model = activeModel;
@@ -221,6 +266,7 @@ async function parseFile(file, options, state) {
           unattributedTurns.clear();
           unattributedRetries.clear();
         }
+        state.lines_parsed += 1;
         continue;
       }
 
@@ -229,23 +275,26 @@ async function parseFile(file, options, state) {
       // inspect that inherited history again.
       if (forkedSession && !hasTurnContext) {
         if (record.type === "event_msg" && record.payload?.type === "token_count") {
-          const inherited = rawUsage(record.payload?.info?.total_token_usage);
+          const inherited = cumulativeUsageOf(record);
           if (inherited) {
             previousCumulative = inherited;
             state.inherited_snapshots_skipped += 1;
           }
         }
+        state.lines_skipped += 1;
         continue;
       }
 
       const turnKey = `${sessionId}:${activeTurnId || `line:${lineNumber}`}`;
       const type = record.type === "response_item" ? contentType(record.payload) : null;
+      let parsed = false;
       if (type && inWindow(timestamp, options)) {
         const turn = getTurn(turnKey, timestamp);
         turn.content_types.add(type);
         if (type === "tool_use" && record.payload?.name) {
           turn.tool_names.add(record.payload.name);
         }
+        parsed = true;
       }
 
       if (isFailureRecord(record) && inWindow(timestamp, options)) {
@@ -265,23 +314,37 @@ async function parseFile(file, options, state) {
           turn.error_count += 1;
           turn.retry_count += 1;
         }
+        parsed = true;
       }
 
-      if (record.type !== "event_msg" || record.payload?.type !== "token_count") continue;
-      const cumulative = rawUsage(record.payload?.info?.total_token_usage);
-      if (!cumulative) continue;
+      if (record.type !== "event_msg" || record.payload?.type !== "token_count") {
+        state[parsed ? "lines_parsed" : "lines_skipped"] += 1;
+        continue;
+      }
+      const cumulative = cumulativeUsageOf(record);
+      if (!cumulative) {
+        state[parsed ? "lines_parsed" : "lines_skipped"] += 1;
+        continue;
+      }
       const delta = usageDelta(previousCumulative, cumulative);
       previousCumulative = cumulative;
-      if (!inWindow(timestamp, options)) continue;
+      if (!inWindow(timestamp, options)) {
+        state.lines_skipped += 1;
+        continue;
+      }
       const snapshotKey = `${sessionId}\0${RAW_USAGE_KEYS.map((key) => cumulative[key]).join(":")}`;
       if (state.snapshots.has(snapshotKey)) {
         state.duplicate_snapshots += 1;
+        state.lines_skipped += 1;
         continue;
       }
       state.snapshots.add(snapshotKey);
 
       const usage = normalizeCodexUsage(delta);
-      if (!usage || totalTokenCount(usage) === 0) continue;
+      if (!usage || totalTokenCount(usage) === 0) {
+        state.lines_skipped += 1;
+        continue;
+      }
       // A Codex turn can make several model requests. Keep every positive
       // cumulative delta separate so request-level pricing thresholds remain
       // correct; repeated snapshots produce a zero delta and no row.
@@ -297,6 +360,7 @@ async function parseFile(file, options, state) {
       }
       turn.usage = addUsage(turn.usage, usage);
       turn.reasoning_output_tokens += delta.reasoning_output_tokens;
+      state.lines_parsed += 1;
     }
   } catch {
     state.unreadable_files += 1;
@@ -359,6 +423,8 @@ export async function parseCodexLogs(options = {}) {
     inherited_snapshots_skipped: 0,
     malformed_lines: 0,
     unreadable_files: 0,
+    lines_parsed: 0,
+    lines_skipped: 0,
   };
   for (const file of discovery.files.sort((left, right) =>
     left.filePath.localeCompare(right.filePath))) {
@@ -375,6 +441,10 @@ export async function parseCodexLogs(options = {}) {
     sessions: sessionSummaries(turns),
     diagnostics: {
       files_scanned: discovery.files.length,
+      files_found: discovery.files.length,
+      directories_checked: logRoots,
+      lines_parsed: state.lines_parsed,
+      lines_skipped: state.lines_skipped,
       malformed_lines: state.malformed_lines,
       unreadable_files: state.unreadable_files,
       unreadable_directories: discovery.unreadable_directories,

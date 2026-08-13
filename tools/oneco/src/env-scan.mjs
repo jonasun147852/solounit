@@ -3,7 +3,7 @@ import { access, readdir, readFile } from "node:fs/promises";
 import { homedir, platform, release, arch } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { execFile } from "node:child_process";
-import { detectLogSources } from "./log-sources.mjs";
+import { detectLogSources, LOG_SOURCES, logRootsFor } from "./log-sources.mjs";
 
 const PACKAGE_MANAGERS = [
   "npm",
@@ -25,11 +25,30 @@ function displayPath(filePath, homeDirectory) {
   return filePath;
 }
 
-async function readJson(filePath, homeDirectory, errors) {
+function nonEmptyLineCount(contents) {
+  return String(contents).split(/\r?\n/).filter((line) => line.trim()).length;
+}
+
+async function readJson(filePath, homeDirectory, errors, diagnostics) {
   try {
-    return JSON.parse(await readFile(filePath, "utf8"));
+    const contents = await readFile(filePath, "utf8");
+    diagnostics?.filesFound.add(filePath);
+    const parsed = JSON.parse(contents);
+    if (diagnostics && !diagnostics.countedFiles.has(filePath)) {
+      diagnostics.countedFiles.add(filePath);
+      diagnostics.linesParsed += nonEmptyLineCount(contents);
+    }
+    return parsed;
   } catch (error) {
     if (error?.code === "ENOENT") return null;
+    if (diagnostics && error instanceof SyntaxError && !diagnostics.countedFiles.has(filePath)) {
+      diagnostics.countedFiles.add(filePath);
+      try {
+        diagnostics.linesSkipped += nonEmptyLineCount(await readFile(filePath, "utf8"));
+      } catch {
+        // The normal scan error below remains the useful diagnostic.
+      }
+    }
     errors.push({
       source: displayPath(filePath, homeDirectory),
       error: error instanceof SyntaxError ? "invalid-json" : "unreadable",
@@ -132,9 +151,10 @@ function compareVersionStrings(left, right) {
   return 0;
 }
 
-async function claudeMetadataVersion(homeDirectory, errors) {
+async function claudeMetadataVersion(homeDirectory, errors, diagnostics) {
   const updatePath = join(homeDirectory, ".claude", ".last-update-result.json");
-  const update = await readJson(updatePath, homeDirectory, errors);
+  diagnostics?.directoriesChecked.add(dirname(updatePath));
+  const update = await readJson(updatePath, homeDirectory, errors, diagnostics);
   const updateVersion = extractVersion(
     update?.version_to || update?.targetVersion || update?.version_from,
   );
@@ -143,7 +163,8 @@ async function claudeMetadataVersion(homeDirectory, errors) {
   }
 
   const statePath = join(homeDirectory, ".claude.json");
-  const state = await readJson(statePath, homeDirectory, errors);
+  diagnostics?.directoriesChecked.add(dirname(statePath));
+  const state = await readJson(statePath, homeDirectory, errors, diagnostics);
   const stateVersion = extractVersion(
     state?.lastOnboardingVersion || state?.lastReleaseNotesSeen,
   );
@@ -152,6 +173,7 @@ async function claudeMetadataVersion(homeDirectory, errors) {
   }
 
   const downloadsPath = join(homeDirectory, ".claude", "downloads");
+  diagnostics?.directoriesChecked.add(downloadsPath);
   try {
     const versions = (await readdir(downloadsPath))
       .map((name) => extractVersion(name))
@@ -207,6 +229,13 @@ export async function scanEnvironment(options = {}) {
   const currentDirectory = options.currentDirectory || process.cwd();
   const environment = options.environment || process.env;
   const errors = [];
+  const diagnostics = {
+    directoriesChecked: new Set(),
+    filesFound: new Set(),
+    countedFiles: new Set(),
+    linesParsed: 0,
+    linesSkipped: 0,
+  };
   const mcpServers = new Map();
   const plugins = new Map();
 
@@ -218,7 +247,8 @@ export async function scanEnvironment(options = {}) {
   ];
 
   for (const filePath of [...new Set(configPaths)]) {
-    const config = await readJson(filePath, homeDirectory, errors);
+    diagnostics.directoriesChecked.add(dirname(filePath));
+    const config = await readJson(filePath, homeDirectory, errors, diagnostics);
     if (config) {
       collectConfiguration(
         config,
@@ -235,12 +265,22 @@ export async function scanEnvironment(options = {}) {
     : null;
   const metadata = commandVersion
     ? null
-    : await claudeMetadataVersion(homeDirectory, errors);
+    : await claudeMetadataVersion(homeDirectory, errors, diagnostics);
   const codexExecutable = await findExecutable("codex", environment);
   const codexVersion = codexExecutable
     ? extractVersion(await runVersionCommand(codexExecutable))
     : null;
-  const detectedSources = options.detectedSources || await detectLogSources({ homeDirectory });
+  const logSourceOptions = {
+    homeDirectory,
+    claudeLogRoot: options.claudeLogRoot,
+    codexLogRoots: options.codexLogRoots,
+  };
+  for (const source of LOG_SOURCES) {
+    for (const root of logRootsFor(source, logSourceOptions)) {
+      diagnostics.directoriesChecked.add(root);
+    }
+  }
+  const detectedSources = options.detectedSources || await detectLogSources(logSourceOptions);
   const detectedAgents = new Set(detectedSources.map((source) => source.agent));
 
   const packageManagers = [];
@@ -269,6 +309,14 @@ export async function scanEnvironment(options = {}) {
     mcp_servers: configuredItems(mcpServers),
     plugins: configuredItems(plugins),
     scan_errors: errors,
+    diagnostics: {
+      directories_checked: [...diagnostics.directoriesChecked]
+        .map((directory) => displayPath(directory, homeDirectory))
+        .sort(),
+      files_found: diagnostics.filesFound.size,
+      lines_parsed: diagnostics.linesParsed,
+      lines_skipped: diagnostics.linesSkipped,
+    },
   };
 
   fingerprint.dimensions = fingerprintDimensions(fingerprint);

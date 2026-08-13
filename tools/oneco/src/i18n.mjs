@@ -16,7 +16,7 @@ Usage:
   solounit wallet [--days 30] [--agent claude|codex] [--json]
   solounit wallet [--days 30] [--agent claude|codex] --html [path]
   solounit dashboard [--out path] [--open]
-  solounit graft [--days 30] [--agent claude|codex]
+  solounit graft [--days 30] [--agent claude|codex] [--debug]
   solounit sync [--url http://localhost:8787]
 
 Global options:
@@ -27,7 +27,7 @@ Commands:
   audit   Review local agent access, hooks, credentials, and permissions offline.
   wallet  Report API-equivalent agent usage and potential savings from local logs.
   dashboard  Render all local mirrors as a self-contained visual health panel.
-  graft   Run doctor and wallet together for the first-run experience.
+  graft   Run doctor, wallet, and audit together for the first-run experience.
   sync    Explicitly fetch advisories and update the local cache.
 
 Trust: only an explicit sync command can use the network. Doctor, audit, wallet, dashboard, and graft stay offline.
@@ -48,6 +48,14 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "graft.auditSummary": "{mirror} — {critical} critical, {warning} warning, {info} info.{ending}",
     "graft.auditDetails": " Run solounit audit for detail.",
     "graft.auditClear": " No findings.",
+    "graft.auditReviewedClear": "Reviewed {servers} MCP servers / {files} config files, nothing risky found.",
+    "graft.auditReviewed": "Reviewed {servers} MCP servers / {files} config files; {findings} findings are available in `solounit audit`.",
+    "graft.doctorError": "Doctor could not inspect your environment: {reason}. Run `solounit doctor` for details.",
+    "graft.walletError": "Wallet could not read your logs: {reason}. Run `solounit wallet` for details.",
+    "graft.auditError": "Audit could not inspect your local configuration: {reason}. Run `solounit audit` for details.",
+    "graft.unknownError": "unknown internal error",
+    "graft.none": "none",
+    "graft.debug": "[debug] {mirror}: directories checked: {directories}; files found: {files}; lines parsed: {parsed}; lines skipped: {skipped}.",
     "graft.dashboardPrompt": "Run `solounit dashboard --open` to see all of this as a visual panel.",
     "sync.noUrl": "No advisory hub URL is configured. Run `solounit sync --url http://localhost:8787` or set SOLOUNIT_HUB_URL.",
     "sync.httpFailure": "Advisory sync failed with HTTP {status}.",
@@ -76,6 +84,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "doctor.notFound": "not found",
     "doctor.detected": "detected from local logs",
     "doctor.matchCount": "{matched} of {scanned} local advisories matched.",
+    "doctor.scannedFingerprint": "Scanned {scanned} advisories against your fingerprint (claude {claude}, codex {codex}, {platform}).",
     "doctor.noMatches": "Nothing known-broken in your setup right now — that is the good outcome. The cost and access reports below are where the interesting numbers usually are.",
     "doctor.draft": "DRAFT",
     "doctor.evidence": "Evidence: {value}",
@@ -104,6 +113,9 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "wallet.agentHeading": "{agent}",
     "wallet.agentSummary": "API-equivalent usage: {spend} · {turns} turns · {sessions} sessions.",
     "wallet.periodSummary": "Last {days} day(s): {turns} assistant turns across {sessions} sessions.",
+    "wallet.providedLogs": "provided log data",
+    "wallet.noSessionsAtPaths": "Checked these paths: {paths}. Found no session logs there.",
+    "wallet.noPricedTurnsAtPaths": "Checked these paths: {paths}. Saw {files} session log file(s), but parsed zero priced turns.",
     "wallet.unpricedTokens": "{tokens} tokens used unknown models and remain unpriced.",
     "wallet.spendByModel": "Spend by model:",
     "wallet.noUsage": "No usage-bearing turns found.",
@@ -167,6 +179,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "audit.inventoryWhy": "Installed agent integrations inherit access from their local configuration.",
     "audit.inventoryFix": "Remove or disable it if the name, source, or granted access is unexpected.",
     "audit.localReport": "Local-only access report — no network requests were made.",
+    "audit.reviewedClear": "Reviewed {servers} MCP servers / {files} config files, nothing risky found.",
     "audit.severity.critical": "CRITICAL",
     "audit.severity.warning": "WARNING",
     "audit.severity.info": "INFO",
@@ -236,7 +249,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
   solounit wallet [--days 30] [--agent claude|codex] [--json]
   solounit wallet [--days 30] [--agent claude|codex] --html [path]
   solounit dashboard [--out path] [--open]
-  solounit graft [--days 30] [--agent claude|codex]
+  solounit graft [--days 30] [--agent claude|codex] [--debug]
   solounit sync [--url http://localhost:8787]
 
 全局选项：
@@ -247,7 +260,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
   audit   离线检查本地智能体访问、钩子、凭据和权限。
   wallet  基于本地日志报告智能体的 API 等效用量和潜在节省。
   dashboard  将所有本地镜像渲染为独立的可视化健康面板。
-  graft   为首次使用同时运行修理镜和钱包镜。
+  graft   为首次使用同时运行修理镜、钱包镜和安全镜。
   sync    显式获取建议并更新本地缓存。
 
 信任说明：只有显式执行 sync 命令才会使用网络。修理镜、安全镜、钱包镜、面板和 graft 始终离线运行。
@@ -268,6 +281,14 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "graft.auditSummary": "{mirror} — {critical} 个严重项、{warning} 个警告、{info} 个信息项。{ending}",
     "graft.auditDetails": "运行 solounit audit 查看详情。",
     "graft.auditClear": "没有发现问题。",
+    "graft.auditReviewedClear": "检查了 {servers} 个 MCP 服务器和 {files} 个配置文件；未发现风险。",
+    "graft.auditReviewed": "检查了 {servers} 个 MCP 服务器和 {files} 个配置文件；可在 `solounit audit` 中查看 {findings} 个发现。",
+    "graft.doctorError": "修理镜无法检查你的环境：{reason}。运行 `solounit doctor` 查看详情。",
+    "graft.walletError": "钱包镜无法读取本地日志：{reason}。运行 `solounit wallet` 查看详情。",
+    "graft.auditError": "安全镜无法检查本地配置：{reason}。运行 `solounit audit` 查看详情。",
+    "graft.unknownError": "未知内部错误",
+    "graft.none": "无",
+    "graft.debug": "[调试] {mirror}：已检查目录：{directories}；找到文件：{files}；已解析行：{parsed}；已跳过行：{skipped}。",
     "graft.dashboardPrompt": "运行 `solounit dashboard --open` 在可视化面板中查看全部结果。",
     "sync.noUrl": "未配置建议中心 URL。请运行 `solounit sync --url http://localhost:8787` 或设置 SOLOUNIT_HUB_URL。",
     "sync.httpFailure": "建议同步失败，HTTP 状态码为 {status}。",
@@ -296,6 +317,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "doctor.notFound": "未找到",
     "doctor.detected": "从本地日志检测到",
     "doctor.matchCount": "{scanned} 条本地建议中有 {matched} 条匹配。",
+    "doctor.scannedFingerprint": "已根据你的指纹（claude {claude}、codex {codex}、{platform}）扫描 {scanned} 条建议。",
     "doctor.noMatches": "你的环境目前没有已知故障——这是好结果。真正有料的数字通常在下面的用量和权限报告里。",
     "doctor.draft": "草稿",
     "doctor.evidence": "证据：{value}",
@@ -324,6 +346,9 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "wallet.agentHeading": "{agent}",
     "wallet.agentSummary": "API 等效用量：{spend} · {turns} 轮 · {sessions} 个会话。",
     "wallet.periodSummary": "过去 {days} 天：{sessions} 个会话中共有 {turns} 个助手轮次。",
+    "wallet.providedLogs": "提供的日志数据",
+    "wallet.noSessionsAtPaths": "已检查这些路径：{paths}。其中未找到会话日志。",
+    "wallet.noPricedTurnsAtPaths": "已检查这些路径：{paths}。看到 {files} 个会话日志文件，但解析出的可定价轮次为零。",
     "wallet.unpricedTokens": "未知模型使用了 {tokens} 个 token，尚未定价。",
     "wallet.spendByModel": "按模型划分的用量：",
     "wallet.noUsage": "未找到包含用量的轮次。",
@@ -387,6 +412,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "audit.inventoryWhy": "已安装的智能体集成会继承其本地配置的访问权限。",
     "audit.inventoryFix": "如果名称、来源或授予的访问权限不符合预期，请删除或禁用它。",
     "audit.localReport": "仅本地访问报告 — 未发出任何网络请求。",
+    "audit.reviewedClear": "检查了 {servers} 个 MCP 服务器和 {files} 个配置文件；未发现风险。",
     "audit.severity.critical": "严重",
     "audit.severity.warning": "警告",
     "audit.severity.info": "信息",

@@ -7,7 +7,11 @@ import {
   totalTokenCount,
 } from "./claude-logs.mjs";
 import { t } from "./i18n.mjs";
-import { parseDetectedLogSources } from "./log-sources.mjs";
+import {
+  LOG_SOURCES,
+  logRootsFor,
+  parseDetectedLogSources,
+} from "./log-sources.mjs";
 
 const DEFAULT_PRICING_URL = new URL("./pricing.json", import.meta.url);
 const MILLION = 1_000_000;
@@ -364,17 +368,33 @@ function wasteBuckets(logs, pricing, locale = "en") {
   ].sort((left, right) => right.estimated_usd - left.estimated_usd);
 }
 
-function diagnosticsSummary(reports) {
+function diagnosticsSummary(reports, directoriesChecked = []) {
   const total = {
     files_scanned: 0,
+    files_found: 0,
+    lines_parsed: 0,
+    lines_skipped: 0,
     malformed_lines: 0,
     unreadable_files: 0,
     unreadable_directories: 0,
   };
   for (const report of reports) {
-    for (const key of Object.keys(total)) total[key] += report.logs.diagnostics?.[key] || 0;
+    const diagnostics = report.logs.diagnostics || {};
+    total.files_scanned += diagnostics.files_scanned || 0;
+    total.files_found += diagnostics.files_found ?? diagnostics.files_scanned ?? 0;
+    total.lines_parsed += diagnostics.lines_parsed || 0;
+    total.lines_skipped += diagnostics.lines_skipped ?? diagnostics.malformed_lines ?? 0;
+    total.malformed_lines += diagnostics.malformed_lines || 0;
+    total.unreadable_files += diagnostics.unreadable_files || 0;
+    total.unreadable_directories += diagnostics.unreadable_directories || 0;
   }
-  return total;
+  return {
+    ...total,
+    directories_checked: [...new Set([
+      ...directoriesChecked,
+      ...reports.flatMap((report) => report.logs.diagnostics?.directories_checked || []),
+    ])],
+  };
 }
 
 function aggregateWasteBuckets(reports, locale) {
@@ -456,16 +476,38 @@ async function walletLogSources(options, since, now) {
   }];
 }
 
+function walletLogDirectories(options) {
+  if (options.logsByAgent) {
+    return Object.values(options.logsByAgent)
+      .flatMap((logs) => logs?.diagnostics?.directories_checked || []);
+  }
+  if (options.logs) return options.logs.diagnostics?.directories_checked || [];
+  if (Array.isArray(options.detectedSources)) {
+    return options.detectedSources.flatMap((source) => source.roots || []);
+  }
+  const sources = options.agent
+    ? LOG_SOURCES.filter((source) => source.agent === options.agent)
+    : LOG_SOURCES;
+  return sources.flatMap((source) => logRootsFor(source, {
+    ...options,
+    claudeLogRoot: options.claudeLogRoot || options.logRoot,
+  }));
+}
+
 export async function createWalletReport(options = {}) {
   const locale = options.locale || "en";
   const now = options.now || new Date();
   const days = options.days || 30;
   const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1_000);
   const pricing = options.pricing || (await loadPricing(options.pricingUrl));
+  const directoriesChecked = walletLogDirectories(options);
   const sources = await walletLogSources(options, since, now);
   const byAgent = sources.map((source) => agentReport(source, pricing, locale));
   const allTurns = byAgent.flatMap((report) => report.logs.turns);
   const spend = spendSummary(allTurns, pricing);
+  const pricedTurns = spend.by_model
+    .filter((model) => model.priced)
+    .reduce((sum, model) => sum + model.turns, 0);
   const buckets = aggregateWasteBuckets(byAgent, locale);
   const agentWasteTotal = byAgent.reduce(
     (sum, report) => sum + report.summary.estimated_potential_waste_usd,
@@ -492,6 +534,7 @@ export async function createWalletReport(options = {}) {
       agents: byAgent.length,
       sessions: byAgent.reduce((sum, report) => sum + report.summary.sessions, 0),
       assistant_turns: allTurns.length,
+      priced_turns: pricedTurns,
       total_spend_usd: spend.total_spend_usd,
       estimated_potential_waste_usd: round(
         Math.min(spend.total_spend_usd, agentWasteTotal),
@@ -503,7 +546,7 @@ export async function createWalletReport(options = {}) {
     spend_by_model: spend.by_model,
     waste_buckets: buckets,
     by_agent: byAgent.map(({ logs: _logs, ...report }) => report),
-    diagnostics: diagnosticsSummary(byAgent),
+    diagnostics: diagnosticsSummary(byAgent, directoriesChecked),
   };
 }
 
@@ -553,9 +596,29 @@ export function renderWallet(report, locale = report?.locale || "en") {
       turns: report.summary.assistant_turns.toLocaleString("en-US"),
       sessions: report.summary.sessions.toLocaleString("en-US"),
     }),
+  ];
+
+  const diagnostics = report.diagnostics || {};
+  const paths = diagnostics.directories_checked?.length
+    ? diagnostics.directories_checked.join(", ")
+    : t("wallet.providedLogs", { locale });
+  const filesFound = diagnostics.files_found ?? diagnostics.files_scanned ?? 0;
+  const pricedTurns = report.summary.priced_turns ?? (report.spend_by_model || [])
+    .filter((model) => model.priced)
+    .reduce((sum, model) => sum + (model.turns || 0), 0);
+  if (report.summary.sessions === 0 && filesFound === 0) {
+    lines.push(t("wallet.noSessionsAtPaths", { locale, paths }));
+  } else if (pricedTurns === 0) {
+    lines.push(t("wallet.noPricedTurnsAtPaths", {
+      locale,
+      paths,
+      files: filesFound.toLocaleString("en-US"),
+    }));
+  }
+  lines.push(
     `${multiAgent ? t("wallet.combinedUsageLabel", { locale }) : framing.usage_label}: ${dollars(report.summary.total_spend_usd)}.`,
     framing.usage_explainer,
-  ];
+  );
 
   if (report.summary.unpriced_tokens > 0) {
     lines.push(

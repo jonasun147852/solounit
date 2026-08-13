@@ -1,6 +1,6 @@
 import { lstat, readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { setLocale, t } from "./i18n.mjs";
 import { detectLogSources } from "./log-sources.mjs";
 
@@ -154,7 +154,17 @@ async function fileStatus(filePath) {
   }
 }
 
-async function readLocalFile(filePath, homeDirectory, findings) {
+function nonEmptyLineCount(contents) {
+  return String(contents).split(/\r?\n/).filter((line) => line.trim()).length;
+}
+
+function recordScannedLines(diagnostics, filePath, contents, field) {
+  if (!diagnostics || diagnostics.countedFiles.has(filePath)) return;
+  diagnostics.countedFiles.add(filePath);
+  diagnostics[field] += nonEmptyLineCount(contents);
+}
+
+async function readLocalFile(filePath, homeDirectory, findings, diagnostics) {
   const checked = await fileStatus(filePath);
   if (checked.state === "missing") return null;
   if (checked.state === "symlink") {
@@ -174,6 +184,8 @@ async function readLocalFile(filePath, homeDirectory, findings) {
     return null;
   }
 
+  diagnostics?.filesFound.add(filePath);
+
   try {
     return { contents: await readFile(filePath, "utf8"), status: checked.status };
   } catch {
@@ -184,12 +196,16 @@ async function readLocalFile(filePath, homeDirectory, findings) {
   }
 }
 
-async function readJsonFile(filePath, homeDirectory, findings) {
-  const localFile = await readLocalFile(filePath, homeDirectory, findings);
+async function readJsonFile(filePath, homeDirectory, findings, diagnostics) {
+  const localFile = await readLocalFile(filePath, homeDirectory, findings, diagnostics);
   if (!localFile) return null;
   try {
-    return { value: JSON.parse(localFile.contents), status: localFile.status };
+    const value = JSON.parse(localFile.contents);
+    recordScannedLines(diagnostics, filePath, localFile.contents, "linesParsed");
+    diagnostics?.configurationFilesReviewed.add(filePath);
+    return { value, status: localFile.status };
   } catch {
+    recordScannedLines(diagnostics, filePath, localFile.contents, "linesSkipped");
     findings.push(
       finding(
         "info",
@@ -204,13 +220,19 @@ async function readJsonFile(filePath, homeDirectory, findings) {
   }
 }
 
-async function discoverProjectConfiguration(documentsDirectory, homeDirectory, findings) {
+async function discoverProjectConfiguration(
+  documentsDirectory,
+  homeDirectory,
+  findings,
+  diagnostics,
+) {
   const configurationFiles = [];
   const repositoryRoots = new Set();
   const queue = [{ directory: documentsDirectory, depth: 0 }];
 
   while (queue.length > 0) {
     const { directory, depth } = queue.shift();
+    diagnostics?.directoriesChecked.add(directory);
     let entries;
     try {
       entries = await readdir(directory, { withFileTypes: true });
@@ -571,6 +593,14 @@ export async function createAuditReport(options = {}) {
   const now = options.now || new Date();
   const findings = [];
   const inventories = new Map();
+  const diagnostics = {
+    directoriesChecked: new Set(),
+    filesFound: new Set(),
+    countedFiles: new Set(),
+    configurationFilesReviewed: new Set(),
+    linesParsed: 0,
+    linesSkipped: 0,
+  };
   const detectedSources = options.detectedSources || await detectLogSources({ homeDirectory });
   const homeConfigurationFiles = [
     { path: join(homeDirectory, ".claude.json"), type: "home-state" },
@@ -584,11 +614,18 @@ export async function createAuditReport(options = {}) {
     documentsDirectory,
     homeDirectory,
     findings,
+    diagnostics,
   );
   const configurationFiles = [...homeConfigurationFiles, ...discovered.configurationFiles];
 
   for (const configurationFile of configurationFiles) {
-    const parsed = await readJsonFile(configurationFile.path, homeDirectory, findings);
+    diagnostics.directoriesChecked.add(dirname(configurationFile.path));
+    const parsed = await readJsonFile(
+      configurationFile.path,
+      homeDirectory,
+      findings,
+      diagnostics,
+    );
     if (!parsed) continue;
     const source = displayPath(configurationFile.path, homeDirectory);
     collectInventories(parsed.value, source, inventories);
@@ -607,8 +644,10 @@ export async function createAuditReport(options = {}) {
     ...discovered.repositoryRoots.map((root) => join(root, ".env")),
   ]);
   for (const filePath of credentialFiles) {
-    const localFile = await readLocalFile(filePath, homeDirectory, findings);
+    diagnostics.directoriesChecked.add(dirname(filePath));
+    const localFile = await readLocalFile(filePath, homeDirectory, findings, diagnostics);
     if (!localFile) continue;
+    recordScannedLines(diagnostics, filePath, localFile.contents, "linesParsed");
     const source = displayPath(filePath, homeDirectory);
     findings.push(...credentialFindings(localFile.contents, source));
     const modeFinding = permissionModeFinding(filePath, localFile.status, homeDirectory);
@@ -620,6 +659,7 @@ export async function createAuditReport(options = {}) {
   findings.push(...inventoryFindings(inventories));
   sortFindings(findings);
   const elapsed = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+  const inventoryValues = [...inventories.values()];
 
   return {
     mirror: "audit",
@@ -633,7 +673,17 @@ export async function createAuditReport(options = {}) {
       project_root: displayPath(documentsDirectory, homeDirectory),
       project_max_depth: PROJECT_SCAN_DEPTH,
       project_configuration_files: discovered.configurationFiles.length,
+      mcp_servers: inventoryValues.filter((inventory) => inventory.kind === "mcp").length,
+      config_files: diagnostics.configurationFilesReviewed.size,
       network_requests: 0,
+    },
+    diagnostics: {
+      directories_checked: [...diagnostics.directoriesChecked]
+        .map((directory) => displayPath(directory, homeDirectory))
+        .sort(),
+      files_found: diagnostics.filesFound.size,
+      lines_parsed: diagnostics.linesParsed,
+      lines_skipped: diagnostics.linesSkipped,
     },
     summary: summarize(findings),
     findings,
@@ -645,6 +695,13 @@ export function renderAudit(report, locale = report?.locale || "en") {
     t("mirror.audit", { locale }),
     t("audit.localReport", { locale }),
   ];
+  if (report.summary.total === 0) {
+    lines.push(t("audit.reviewedClear", {
+      locale,
+      servers: report.scope.mcp_servers || 0,
+      files: report.scope.config_files || 0,
+    }));
+  }
   for (const severity of SEVERITIES) {
     const matches = report.findings.filter((entry) => entry.severity === severity);
     lines.push("", `${t(`audit.severity.${severity}`, { locale })} (${matches.length})`);

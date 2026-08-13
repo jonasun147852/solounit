@@ -47,6 +47,7 @@ solounit dashboard
 solounit dashboard --out ./solounit-panel.html
 solounit dashboard --open
 solounit graft
+solounit graft --debug
 ```
 
 ## Emergency triage (Claude Code plugin)
@@ -88,7 +89,7 @@ The headline is **API-equivalent usage**, not an estimated bill: “What this us
 
 The dashboard is fully local: its HTML has inline CSS, no scripts, no links, no web fonts, and zero external requests. It renders Audit's already-masked findings and applies the same credential-redaction boundary once more before writing the file. It never re-reads raw secret values.
 
-`graft` runs doctor and wallet, preserves its existing two-sentence summary, and appends a fourth local audit summary section. When audit has findings, graft points to `solounit audit` for detail. It closes by pointing to `solounit dashboard --open` for the visual panel. It is intended for first-run onboarding.
+`graft` runs Doctor, Wallet, and Audit as isolated first-run sections. If one mirror fails, its section prints a one-line reason and the other mirrors still run; these report failures keep exit status 0. Empty sections name what was scanned. `graft --debug` also prints each mirror's checked directories, files found, lines parsed, and lines skipped. When Audit has findings, graft points to `solounit audit` for detail, then closes with `solounit dashboard --open` for the visual panel.
 
 ## Privacy and network guarantee
 

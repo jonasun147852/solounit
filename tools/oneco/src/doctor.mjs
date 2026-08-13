@@ -192,12 +192,28 @@ export async function createDoctorReport(options = {}) {
     generated_at: now.toISOString(),
     privacy: "local-only",
     fingerprint,
+    diagnostics: fingerprint.diagnostics || {
+      directories_checked: [],
+      files_found: 0,
+      lines_parsed: 0,
+      lines_skipped: 0,
+    },
     summary: {
       advisories_scanned: proactiveAdvisories.length,
       matched: matched.length,
     },
     advisories: matched,
   };
+}
+
+function versionBand(installation, locale) {
+  if (!installation?.version) {
+    return installation?.present
+      ? t("doctor.detected", { locale })
+      : t("doctor.notFound", { locale });
+  }
+  const match = String(installation.version).match(/^(\d+)\.(\d+)/);
+  return match ? `${match[1]}.${match[2]}.x` : installation.version;
 }
 
 export function renderDoctor(report, locale = report?.locale || "en") {
@@ -223,7 +239,17 @@ export function renderDoctor(report, locale = report?.locale || "en") {
   ];
 
   if (report.advisories.length === 0) {
-    lines.push("", t("doctor.noMatches", { locale }));
+    lines.push(
+      "",
+      t("doctor.scannedFingerprint", {
+        locale,
+        scanned: report.summary.advisories_scanned,
+        claude: versionBand(report.fingerprint.claude, locale),
+        codex: versionBand(report.fingerprint.codex, locale),
+        platform: report.fingerprint.os.platform,
+      }),
+      t("doctor.noMatches", { locale }),
+    );
   }
 
   for (const advisory of report.advisories) {

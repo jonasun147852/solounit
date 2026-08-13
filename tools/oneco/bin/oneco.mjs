@@ -2,12 +2,12 @@
 
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { createAuditReport, runAudit } from "../src/audit.mjs";
+import { createAuditReport, redactCredentialValues, runAudit } from "../src/audit.mjs";
 import { runDashboard } from "../src/dashboard.mjs";
-import { runDoctor } from "../src/doctor.mjs";
+import { createDoctorReport, renderDoctor, runDoctor } from "../src/doctor.mjs";
 import { resolveLocale, setLocale, stripLocaleArgs, t } from "../src/i18n.mjs";
 import { runSync } from "../src/sync.mjs";
-import { runWallet } from "../src/wallet.mjs";
+import { createWalletReport, renderWallet, runWallet } from "../src/wallet.mjs";
 
 function parseOptions(args, allowed, locale = "en") {
   const options = {
@@ -18,6 +18,7 @@ function parseOptions(args, allowed, locale = "en") {
     url: null,
     out: null,
     open: false,
+    debug: false,
   };
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -92,6 +93,10 @@ function parseOptions(args, allowed, locale = "en") {
       options.open = true;
       continue;
     }
+    if (argument === "--debug" && allowed.has("debug")) {
+      options.debug = true;
+      continue;
+    }
     throw new Error(t("cli.unknownOption", { locale, option: argument }));
   }
 
@@ -105,6 +110,31 @@ function parseOptions(args, allowed, locale = "en") {
     throw new Error(t("cli.outputConflict", { locale }));
   }
   return options;
+}
+
+function oneLineReason(error, locale) {
+  const reason = String(error?.message || error || t("graft.unknownError", { locale }))
+    .replaceAll(/\s+/g, " ")
+    .trim()
+    .replace(/[.!?]+$/, "")
+    .slice(0, 240);
+  return redactCredentialValues(reason || t("graft.unknownError", { locale }), locale);
+}
+
+function graftDebugLine(mirror, report, locale) {
+  const diagnostics = report?.diagnostics || report?.fingerprint?.diagnostics || {};
+  const directories = Array.isArray(diagnostics.directories_checked) &&
+      diagnostics.directories_checked.length > 0
+    ? diagnostics.directories_checked.join(", ")
+    : t("graft.none", { locale });
+  return t("graft.debug", {
+    locale,
+    mirror,
+    directories,
+    files: diagnostics.files_found ?? diagnostics.files_scanned ?? 0,
+    parsed: diagnostics.lines_parsed || 0,
+    skipped: diagnostics.lines_skipped ?? diagnostics.malformed_lines ?? 0,
+  });
 }
 
 export async function main(args = process.argv.slice(2), runtime = {}) {
@@ -176,21 +206,57 @@ export async function main(args = process.argv.slice(2), runtime = {}) {
     }
 
     if (command === "graft") {
-      const options = parseOptions(commandArgs, new Set(["days", "agent"]), locale);
-      const doctor = await runDoctor({ ...runtime.doctorOptions, output, locale });
+      const options = parseOptions(commandArgs, new Set(["days", "agent", "debug"]), locale);
+      let doctor = null;
+      try {
+        doctor = await createDoctorReport({ ...runtime.doctorOptions, locale });
+        output.write(`${renderDoctor(doctor, locale)}\n`);
+      } catch (error) {
+        output.write(
+          `${t("mirror.doctor", { locale })}\n${t("graft.doctorError", {
+            locale,
+            reason: oneLineReason(error, locale),
+          })}\n`,
+        );
+      }
+      if (options.debug) {
+        output.write(`${graftDebugLine(t("mirror.doctor", { locale }), doctor, locale)}\n`);
+      }
+
       output.write("\n");
-      const wallet = await runWallet({
-        ...runtime.walletOptions,
-        days: options.days,
-        agent: options.agent ?? runtime.walletOptions?.agent,
-        output,
-        locale,
-      });
-      const audit = await createAuditReport({ ...runtime.auditOptions, locale });
-      const matched = doctor.summary?.matched || 0;
-      const spend = wallet.summary?.total_spend_usd || 0;
-      const waste = wallet.summary?.estimated_potential_waste_usd || 0;
-      const auditTotal = audit.summary?.total || 0;
+      let wallet = null;
+      try {
+        wallet = await createWalletReport({
+          ...runtime.walletOptions,
+          days: options.days,
+          agent: options.agent ?? runtime.walletOptions?.agent,
+          locale,
+        });
+        output.write(`${renderWallet(wallet, locale)}\n`);
+      } catch (error) {
+        output.write(
+          `${t("mirror.wallet", { locale })}\n${t("graft.walletError", {
+            locale,
+            reason: oneLineReason(error, locale),
+          })}\n`,
+        );
+      }
+      if (options.debug) {
+        output.write(`${graftDebugLine(t("mirror.wallet", { locale }), wallet, locale)}\n`);
+      }
+
+      let audit = null;
+      let auditError = null;
+      try {
+        audit = await createAuditReport({ ...runtime.auditOptions, locale });
+      } catch (error) {
+        auditError = error;
+      }
+
+      const matched = doctor?.summary?.matched || 0;
+      const spend = wallet?.summary?.total_spend_usd || 0;
+      const waste = wallet?.summary?.estimated_potential_waste_usd || 0;
+      const auditTotal = audit?.summary?.total || 0;
       const advisoryLabel = t(
         matched === 1 ? "graft.advisory.one" : "graft.advisory.other",
         { locale },
@@ -204,16 +270,33 @@ export async function main(args = process.argv.slice(2), runtime = {}) {
           waste: `$${waste.toFixed(2)}`,
         })}\n`,
       );
-      output.write(
-        `\n${t("graft.auditSummary", {
+      output.write(`\n${t("mirror.audit", { locale })}\n`);
+      if (audit) {
+        output.write(
+          `${t("graft.auditSummary", {
+            locale,
+            mirror: t("mirror.audit", { locale }),
+            critical: audit.summary.critical,
+            warning: audit.summary.warning,
+            info: audit.summary.info,
+            ending: t(auditTotal > 0 ? "graft.auditDetails" : "graft.auditClear", { locale }),
+          })}\n`,
+        );
+        output.write(`${t(auditTotal > 0 ? "graft.auditReviewed" : "graft.auditReviewedClear", {
           locale,
-          mirror: t("mirror.audit", { locale }),
-          critical: audit.summary.critical,
-          warning: audit.summary.warning,
-          info: audit.summary.info,
-          ending: t(auditTotal > 0 ? "graft.auditDetails" : "graft.auditClear", { locale }),
-        })}\n`,
-      );
+          servers: audit.scope.mcp_servers || 0,
+          files: audit.scope.config_files || 0,
+          findings: auditTotal,
+        })}\n`);
+      } else {
+        output.write(`${t("graft.auditError", {
+          locale,
+          reason: oneLineReason(auditError, locale),
+        })}\n`);
+      }
+      if (options.debug) {
+        output.write(`${graftDebugLine(t("mirror.audit", { locale }), audit, locale)}\n`);
+      }
       output.write(`\n${t("graft.dashboardPrompt", { locale })}\n`);
       return 0;
     }

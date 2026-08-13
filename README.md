@@ -14,6 +14,8 @@ npx solounit graft
 
 **What you'll see:** `Graft complete: Doctor matched [local count] setup advisories. Wallet reports [local total] in API-equivalent usage and up to [local estimate] in potential savings; all analysis stayed on this machine.`
 
+If a mirror looks empty, run `npx solounit graft --debug` to show the directories checked plus file and parser-line counts for Doctor, Wallet, and Audit. A failure in one mirror is reported in its section without stopping the other two.
+
 Or run from source:
 
 ```bash

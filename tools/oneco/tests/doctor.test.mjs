@@ -8,6 +8,7 @@ import {
   createDoctorReport,
   loadAdvisories,
   matchAdvisories,
+  renderDoctor,
   satisfiesVersion,
 } from "../src/doctor.mjs";
 import { writeAdvisoryCache } from "../src/advisory-cache.mjs";
@@ -104,6 +105,14 @@ test("doctor never proactively matches event-triggered advisories", () => {
   assert.deepEqual(
     matchAdvisories(fingerprint(), [environmentAdvisory, eventAdvisory]),
     [environmentAdvisory],
+  );
+});
+
+test("empty doctor reports the advisory count and version-band fingerprint", async () => {
+  const report = await createDoctorReport({ fingerprint: fingerprint(), advisories: [] });
+  assert.match(
+    renderDoctor(report),
+    /Scanned 0 advisories against your fingerprint \(claude 2\.1\.x, codex not found, darwin\)\./,
   );
 });
 

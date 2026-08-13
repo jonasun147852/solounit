@@ -34,10 +34,16 @@ export function normalizeUsage(value) {
   const knownCacheWrite = fiveMinute + oneHour;
 
   return {
-    input_tokens: tokenCount(value.input_tokens ?? value.inputTokens),
-    output_tokens: tokenCount(value.output_tokens ?? value.outputTokens),
+    input_tokens: tokenCount(
+      value.input_tokens ?? value.inputTokens ?? value.prompt_tokens ?? value.promptTokens,
+    ),
+    output_tokens: tokenCount(
+      value.output_tokens ?? value.outputTokens ?? value.completion_tokens ??
+        value.completionTokens,
+    ),
     cache_read_input_tokens: tokenCount(
-      value.cache_read_input_tokens ?? value.cacheReadInputTokens,
+      value.cache_read_input_tokens ?? value.cacheReadInputTokens ??
+        value.cached_input_tokens ?? value.cachedInputTokens,
     ),
     cache_write_5m_input_tokens:
       fiveMinute + (knownCacheWrite === 0 ? aggregateCacheWrite : 0),
@@ -94,7 +100,11 @@ async function collectJsonlFiles(root, state, cursor = root) {
 }
 
 function timestampOf(record) {
-  const timestamp = Date.parse(record.timestamp || record.message?.timestamp || "");
+  const message = messageOf(record);
+  const timestamp = Date.parse(
+    record.timestamp || record.created_at || record.createdAt || message?.timestamp ||
+      record.data?.timestamp || record.payload?.timestamp || "",
+  );
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
@@ -102,8 +112,41 @@ function inWindow(timestamp, since, until) {
   return timestamp !== null && timestamp >= since && timestamp <= until;
 }
 
+function messageOf(record) {
+  const candidates = [
+    record?.message,
+    record?.data?.message,
+    record?.payload?.message,
+    record?.response?.message,
+  ];
+  return candidates.find((candidate) => candidate && typeof candidate === "object") || null;
+}
+
+function usageOf(record) {
+  const message = messageOf(record);
+  const candidates = [
+    message?.usage,
+    record?.usage,
+    record?.data?.usage,
+    record?.payload?.usage,
+    record?.response?.usage,
+  ];
+  return candidates.find((candidate) => candidate && typeof candidate === "object") || null;
+}
+
+function sessionIdOf(record, fallback) {
+  return record.sessionId || record.session_id || record.data?.sessionId ||
+    record.data?.session_id || record.payload?.sessionId || record.payload?.session_id || fallback;
+}
+
+function modelOf(record) {
+  const message = messageOf(record);
+  return message?.model || record.model || record.model_id || record.modelId ||
+    record.data?.model || record.payload?.model || "unknown";
+}
+
 function contentMetadata(record) {
-  const content = record.message?.content;
+  const content = messageOf(record)?.content;
   if (!Array.isArray(content)) {
     return {
       content_types: typeof content === "string" ? ["text"] : [],
@@ -120,8 +163,12 @@ function contentMetadata(record) {
 }
 
 function isAssistantUsageRecord(record) {
-  const role = record.message?.role || record.role;
-  return (record.type === "assistant" || role === "assistant") && record.message?.usage;
+  const role = messageOf(record)?.role || record.role || record.data?.role ||
+    record.payload?.role;
+  const type = String(record.type || record.data?.type || record.payload?.type || "")
+    .toLowerCase();
+  return (type === "assistant" || type === "assistant_message" || role === "assistant") &&
+    usageOf(record);
 }
 
 function isRetryRecord(record) {
@@ -138,18 +185,19 @@ function isRetryRecord(record) {
 
 function usageFromRetryRecord(record) {
   return normalizeUsage(
-    record.usage || record.error?.usage || record.message?.usage || record.request?.usage,
+    record.usage || record.error?.usage || usageOf(record) || record.request?.usage,
   );
 }
 
 function mergeTurn(existing, record, usage, timestamp, fallbackSession) {
   const content = contentMetadata(record);
+  const message = messageOf(record);
   if (!existing) {
     return {
-      id: record.message?.id || record.requestId || record.uuid,
-      session_id: record.sessionId || fallbackSession,
+      id: message?.id || record.requestId || record.request_id || record.uuid,
+      session_id: sessionIdOf(record, fallbackSession),
       timestamp,
-      model: record.message?.model || record.model || "unknown",
+      model: modelOf(record),
       usage,
       content_types: new Set(content.content_types),
       tool_names: new Set(content.tool_names),
@@ -193,16 +241,27 @@ async function parseFile(filePath, root, options, state) {
         record = JSON.parse(line);
       } catch {
         state.malformed_lines += 1;
+        state.lines_skipped += 1;
+        continue;
+      }
+      if (!record || typeof record !== "object" || Array.isArray(record)) {
+        state.lines_skipped += 1;
         continue;
       }
 
       const timestamp = timestampOf(record);
-      if (!inWindow(timestamp, options.since, options.until)) continue;
+      if (!inWindow(timestamp, options.since, options.until)) {
+        state.lines_skipped += 1;
+        continue;
+      }
+
+      let parsed = false;
 
       if (isAssistantUsageRecord(record)) {
-        const usage = normalizeUsage(record.message.usage);
-        if (usage) {
-          const id = record.message?.id || record.requestId || record.uuid;
+        const usage = normalizeUsage(usageOf(record));
+        if (usage && totalTokenCount(usage) > 0) {
+          const message = messageOf(record);
+          const id = message?.id || record.requestId || record.request_id || record.uuid;
           const key = id ? `message:${id}` : `${fallbackSession}:${lineNumber}`;
           state.turns.set(
             key,
@@ -214,26 +273,30 @@ async function parseFile(filePath, root, options, state) {
               fallbackSession,
             ),
           );
+          parsed = true;
         }
       }
 
       if (isRetryRecord(record)) {
-        const id = record.uuid;
+        const id = record.uuid || record.id;
         const key = id
           ? `retry:${id}`
-          : `${record.sessionId || fallbackSession}:${timestamp}:${record.retryAttempt || lineNumber}`;
+          : `${sessionIdOf(record, fallbackSession)}:${timestamp}:${record.retryAttempt || lineNumber}`;
         if (!state.retries.has(key)) {
           state.retries.set(key, {
-            session_id: record.sessionId || fallbackSession,
+            session_id: sessionIdOf(record, fallbackSession),
             timestamp,
             retry_attempt: tokenCount(record.retryAttempt),
             max_retries: tokenCount(record.maxRetries),
             status: record.error?.status || record.status || null,
-            model: record.message?.model || record.model || null,
+            model: modelOf(record),
             usage: usageFromRetryRecord(record),
           });
         }
+        parsed = true;
       }
+
+      state[parsed ? "lines_parsed" : "lines_skipped"] += 1;
     }
   } catch {
     state.unreadable_files += 1;
@@ -257,6 +320,8 @@ export async function parseClaudeLogs(options = {}) {
     retries: new Map(),
     malformed_lines: 0,
     unreadable_files: 0,
+    lines_parsed: 0,
+    lines_skipped: 0,
   };
   const window = { since, until };
   for (const filePath of discovery.files.sort()) {
@@ -268,6 +333,10 @@ export async function parseClaudeLogs(options = {}) {
     retries: [...state.retries.values()].sort((left, right) => left.timestamp - right.timestamp),
     diagnostics: {
       files_scanned: discovery.files.length,
+      files_found: discovery.files.length,
+      directories_checked: [logRoot],
+      lines_parsed: state.lines_parsed,
+      lines_skipped: state.lines_skipped,
       malformed_lines: state.malformed_lines,
       unreadable_files: state.unreadable_files,
       unreadable_directories: discovery.unreadable_directories,

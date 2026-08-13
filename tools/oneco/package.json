@@ -1,6 +1,6 @@
 {
   "name": "solounit",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "Offline environment and cost mirrors with explicit advisory sync",
   "type": "module",
   "license": "MIT",
