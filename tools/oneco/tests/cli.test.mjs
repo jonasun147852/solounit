@@ -87,6 +87,10 @@ test("graft runs all mirrors, includes the audit section, and prints the closing
       homeDirectory,
       now: new Date("2026-08-09T12:00:00.000Z"),
     },
+    deliveryOptions: {
+      homeDirectory,
+      now: new Date("2026-08-09T12:00:00.000Z"),
+    },
   });
 
   assert.equal(exitCode, 0);
@@ -132,12 +136,17 @@ test("graft localizes every mirror name when Chinese is selected", async (t) => 
       homeDirectory,
       now: new Date("2026-08-09T12:00:00.000Z"),
     },
+    deliveryOptions: {
+      homeDirectory,
+      now: new Date("2026-08-09T12:00:00.000Z"),
+    },
   });
 
   assert.equal(exitCode, 0);
   assert.match(output.value, /修理镜 · Doctor/);
   assert.match(output.value, /钱包镜 · Wallet/);
   assert.match(output.value, /安全镜 · Audit/);
+  assert.match(output.value, /交付镜 · Delivery/);
 });
 
 test("graft continues through audit when wallet throws", async (t) => {
@@ -159,6 +168,10 @@ test("graft continues through audit when wallet throws", async (t) => {
       now: new Date("2026-08-09T12:00:00.000Z"),
     },
     auditOptions: {
+      homeDirectory,
+      now: new Date("2026-08-09T12:00:00.000Z"),
+    },
+    deliveryOptions: {
       homeDirectory,
       now: new Date("2026-08-09T12:00:00.000Z"),
     },
@@ -193,12 +206,16 @@ test("graft reports absent log paths and per-mirror debug scan counts", async (t
       homeDirectory,
       now: new Date("2026-08-09T12:00:00.000Z"),
     },
+    deliveryOptions: {
+      homeDirectory,
+      now: new Date("2026-08-09T12:00:00.000Z"),
+    },
   });
 
   assert.equal(exitCode, 0);
   assert.match(output.value, /Checked these paths: .*\.claude\/projects.*\.codex\/sessions.*Found no session logs there\./);
   assert.match(output.value, /Scanned 0 advisories against your fingerprint \(claude 2\.1\.x, codex not found, darwin\)\./);
-  for (const mirror of ["Doctor", "Wallet", "Audit"]) {
+  for (const mirror of ["Doctor", "Wallet", "Audit", "Delivery"]) {
     assert.match(
       output.value,
       new RegExp(`\\[debug\\] ${mirror}: directories checked: .+; files found: \\d+; lines parsed: \\d+; lines skipped: \\d+\\.`),
@@ -236,6 +253,10 @@ test("dashboard accepts a custom output path and runs all implemented mirrors", 
       homeDirectory,
       now: new Date("2026-08-09T12:00:00.000Z"),
     },
+    deliveryOptions: {
+      homeDirectory,
+      now: new Date("2026-08-09T12:00:00.000Z"),
+    },
     dashboardOptions: {
       homeDirectory,
       now: new Date("2026-08-09T12:00:00.000Z"),
@@ -249,6 +270,7 @@ test("dashboard accepts a custom output path and runs all implemented mirrors", 
   assert.match(html, />Doctor</);
   assert.match(html, />Wallet</);
   assert.match(html, />Audit</);
+  assert.match(html, />Delivery</);
   assert.match(html, />Cognition</);
 });
 

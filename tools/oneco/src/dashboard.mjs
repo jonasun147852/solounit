@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createAuditReport, redactCredentialValues } from "./audit.mjs";
+import { createDeliveryReport } from "./delivery.mjs";
 import { createDoctorReport } from "./doctor.mjs";
 import { t } from "./i18n.mjs";
 import { createWalletReport } from "./wallet.mjs";
@@ -235,6 +236,77 @@ function auditCard(report, locale) {
     </section>`;
 }
 
+function scoreTone(score) {
+  if (score === null || score === undefined) return "muted";
+  if (score >= 80) return "good";
+  if (score >= 50) return "warn";
+  return "bad";
+}
+
+function deliveryCard(report, locale) {
+  const summary = report?.summary || {};
+  const score = summary.trust_score ?? null;
+  const hasSessions = Number(summary.sessions || 0) > 0;
+  const findings = (Array.isArray(report?.findings) ? report.findings : []).filter(
+    (entry) => entry.severity === "critical" || entry.severity === "warning",
+  );
+  const findingRows = findings.length
+    ? findings
+        .map(
+          (finding) => `
+            <article class="finding severity-${escapeHtml(finding.severity, locale)}">
+              <div class="finding-heading">
+                <span class="severity-dot" aria-hidden="true"></span>
+                <strong>${escapeHtml(finding.id || t("dashboard.deliveryFinding", { locale }), locale)}</strong>
+                <span class="severity-label">${escapeHtml(t(`dashboard.${finding.severity}`, { locale }), locale)}</span>
+              </div>
+              <p>${escapeHtml(finding.what || t("dashboard.deliveryFinding", { locale }), locale)}</p>
+              <dl>
+                <div><dt>${escapeHtml(t("dashboard.where", { locale }), locale)}</dt><dd>${escapeHtml(finding.where || t("dashboard.notSpecified", { locale }), locale)}</dd></div>
+                <div><dt>${escapeHtml(t("dashboard.fixLabel", { locale }), locale)}</dt><dd>${escapeHtml(finding.fix || t("dashboard.notSpecified", { locale }), locale)}</dd></div>
+              </dl>
+            </article>`,
+        )
+        .join("")
+    : `<div class="clear-state"><span aria-hidden="true">✓</span><p>${escapeHtml(t(hasSessions ? "dashboard.deliveryClear" : "dashboard.deliveryNoData", { locale }), locale)}</p></div>`;
+
+  const scoreNote = score === null
+    ? t(hasSessions ? "dashboard.deliveryNoScore" : "dashboard.deliveryNoData", { locale })
+    : t("dashboard.deliveryVerifiedOf", {
+        locale,
+        verified: summary.verified_sessions || 0,
+        sessions: summary.sessions_with_edits || 0,
+      });
+
+  return `
+    <section class="card delivery-card" aria-labelledby="delivery-title">
+      <div class="card-heading">
+        <div>
+          <p class="eyebrow">${escapeHtml(t("dashboard.deliveryTrust", { locale }), locale)}</p>
+          <h2 id="delivery-title">${escapeHtml(t("mirror.delivery", { locale }), locale)}</h2>
+        </div>
+        <span class="count-badge">${escapeHtml(
+          score === null
+            ? t("dashboard.notSpecified", { locale })
+            : t("dashboard.deliveryScore", { locale, score }),
+          locale,
+        )}</span>
+      </div>
+      <div class="score-row">
+        <span class="score-value ${scoreTone(score)}">${escapeHtml(score === null ? "—" : `${score}%`, locale)}</span>
+        <span class="muted">${escapeHtml(t("dashboard.deliveryScoreLabel", { locale }), locale)}</span>
+      </div>
+      <p class="score-note">${escapeHtml(scoreNote, locale)}</p>
+      <div class="stat-strip">
+        <div class="stat"><span>${escapeHtml(summary.edits || 0, locale)}</span><small>${escapeHtml(t("dashboard.deliveryEdits", { locale }), locale)}</small></div>
+        <div class="stat"><span>${escapeHtml(summary.checks_run || 0, locale)}</span><small>${escapeHtml(t("dashboard.deliveryChecks", { locale }), locale)}</small></div>
+        <div class="stat"><span>${escapeHtml(summary.claims || 0, locale)}</span><small>${escapeHtml(t("dashboard.deliveryClaims", { locale }), locale)}</small></div>
+      </div>
+      <div class="finding-list">${findingRows}
+      </div>
+    </section>`;
+}
+
 function cognitionCard(report, locale) {
   if (!report) {
     return `
@@ -272,10 +344,15 @@ function cognitionCard(report, locale) {
 export async function createDashboardReport(options = {}) {
   const locale = options.locale || "en";
   const now = options.now || new Date();
-  const [doctor, wallet, audit] = await Promise.all([
+  const [doctor, wallet, audit, delivery] = await Promise.all([
     createDoctorReport({ ...options.doctorOptions, now: options.doctorOptions?.now || now, locale }),
     createWalletReport({ ...options.walletOptions, now: options.walletOptions?.now || now, locale }),
     createAuditReport({ ...options.auditOptions, now: options.auditOptions?.now || now, locale }),
+    createDeliveryReport({
+      ...options.deliveryOptions,
+      now: options.deliveryOptions?.now || now,
+      locale,
+    }),
   ]);
   return {
     locale,
@@ -284,6 +361,7 @@ export async function createDashboardReport(options = {}) {
     doctor,
     wallet,
     audit,
+    delivery,
     cognition: options.cognition || null,
   };
 }
@@ -400,6 +478,20 @@ export function renderDashboard(report, locale = report?.locale || "en") {
     dl div + div { margin-top: 5px; }
     dt { color: var(--muted); font-weight: 700; }
     dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+    .score-row { display: flex; align-items: baseline; gap: 10px; }
+    .score-value { font-size: clamp(1.9rem, 4vw, 2.5rem); font-weight: 750; letter-spacing: -0.035em; line-height: 1; }
+    .score-value.good { color: var(--green); }
+    .score-value.warn { color: var(--amber); }
+    .score-value.bad { color: var(--red); }
+    .score-value.muted { color: var(--muted); }
+    .score-row .muted { font-size: 0.78rem; }
+    .score-note { margin: 9px 0 16px; color: var(--muted); font-size: 0.76rem; }
+    .stat-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 18px; }
+    .stat { padding: 11px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised); text-align: center; }
+    .stat span { display: block; font-size: 1.05rem; font-weight: 750; }
+    .stat small { display: block; margin-top: 3px; color: var(--muted); font-size: 0.62rem; letter-spacing: 0.07em; text-transform: uppercase; }
+    .cognition-card { grid-column: 1 / -1; }
+    .cognition-card .placeholder { min-height: 0; }
     .placeholder { display: grid; min-height: 180px; place-content: center; justify-items: center; padding: 26px; border: 1px dashed var(--line); border-radius: 14px; background: var(--surface-raised); text-align: center; }
     .placeholder-mark { color: var(--blue); font-size: 2.5rem; line-height: 1; }
     .placeholder p { max-width: 320px; margin: 12px 0 0; color: var(--muted); font-size: 0.8rem; }
@@ -451,6 +543,7 @@ export function renderDashboard(report, locale = report?.locale || "en") {
       ${doctorCard(report?.doctor, locale)}
       ${walletCard(report?.wallet, locale)}
       ${auditCard(report?.audit, locale)}
+      ${deliveryCard(report?.delivery, locale)}
       ${cognitionCard(report?.cognition, locale)}
     </div>
     <footer class="page-footer">${escapeHtml(t("dashboard.footer", { locale }), locale)}</footer>

@@ -4,7 +4,7 @@
 
 **When your agent acts up, run solounit first.**
 
-Private mirrors for AI-agent power users. One command inspects your local agent environment and tells you, in 60 seconds, what's already broken, what your usage really costs, and what access you've granted that could bite you — **entirely on your machine. Nothing leaves it.**
+Private mirrors for AI-agent power users. One command inspects your local agent environment and tells you, in 60 seconds, what's already broken, what your usage really costs, what access you've granted that could bite you, and whether the work your agent said it finished was ever verified — **entirely on your machine. Nothing leaves it.**
 
 ## Install
 
@@ -37,6 +37,7 @@ node solounit/tools/oneco/bin/oneco.mjs graft
 | **Doctor** | "4 things in your setup are known-broken — here are the verified fixes." Matches your environment against a curated advisory database. |
 | **Wallet** | "Your agent burned $X (API-equivalent) last month — $Y of it looks like waste." Auto-detects local Claude Code and Codex logs, groups spend/waste by agent, and supports `--agent claude\|codex`. `--html` renders a shareable card. |
 | **Audit** | "2 plaintext API keys, 1 over-broad permission, 23 MCP servers installed." Reviews the access you've granted your agent. Secrets are always masked. |
+| **Delivery** | "The agent said done — 3 of your 5 sessions that changed files actually ended on a passing check." Replays each session to find work that was claimed but never verified: success reported after a failing check, edits with no test run at all, suppressed verification. |
 | **Dashboard** | `solounit dashboard --open` — all mirrors as one local HTML panel. |
 
 ## Emergency triage (Claude Code plugin)
@@ -48,7 +49,7 @@ claude plugin marketplace add jonasun147852/solounit
 claude plugin install solounit@solounit
 ```
 
-Commands: `/solounit:graft` · `/solounit:doctor` · `/solounit:wallet` · `/solounit:sync`
+Commands: `/solounit:graft` · `/solounit:doctor` · `/solounit:wallet` · `/solounit:delivery` · `/solounit:sync`
 
 This tool is the entry point of a trust-first network for people and their agents — where members' agents share anonymized failure signals so everyone gets immune before they hit the same wall. The network layer is invite-only and under construction.
 

@@ -48,6 +48,25 @@ const dashboardReport = {
     summary: { critical: 0, warning: 0, info: 0, total: 0 },
     findings: [],
   },
+  delivery: {
+    window: { days: 30 },
+    summary: {
+      critical: 0,
+      warning: 0,
+      info: 0,
+      total: 0,
+      sessions: 0,
+      sessions_with_edits: 0,
+      verified_sessions: 0,
+      trust_score: null,
+      edits: 0,
+      checks_run: 0,
+      claims: 0,
+    },
+    checks_by_runner: [],
+    findings: [],
+    sessions: [],
+  },
   cognition: null,
 };
 
@@ -133,6 +152,7 @@ test("dashboard and wallet card set the HTML language and localize mirror chrome
   assert.match(chineseDashboard, /修理镜 · Doctor/);
   assert.match(chineseDashboard, /钱包镜 · Wallet/);
   assert.match(chineseDashboard, /安全镜 · Audit/);
+  assert.match(chineseDashboard, /交付镜 · Delivery/);
   assert.match(chineseDashboard, /认知镜 · Cognition/);
   assert.match(englishDashboard, /SoloUnit — local health panel/);
   assert.match(chineseDashboard, /SoloUnit — 本地健康面板/);
