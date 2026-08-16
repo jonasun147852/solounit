@@ -54,6 +54,34 @@ function syntheticReport() {
         },
       ],
     },
+    delivery: {
+      window: { days: 30 },
+      summary: {
+        critical: 1,
+        warning: 1,
+        info: 1,
+        total: 3,
+        sessions: 4,
+        sessions_with_edits: 4,
+        verified_sessions: 3,
+        trust_score: 75,
+        edits: 9,
+        checks_run: 5,
+        checks_failed: 1,
+        claims: 4,
+      },
+      checks_by_runner: [{ runner: "npm test", kind: "test", runs: 5, passed: 4, failed: 1 }],
+      findings: [
+        {
+          severity: "critical",
+          id: "delivery.claim_after_failed_check",
+          what: "The agent reported success right after a check failed",
+          where: "1 session (a1b2c3d4)",
+          fix: "Re-run the failing check yourself.",
+        },
+      ],
+      sessions: [],
+    },
     cognition: null,
   };
 }
@@ -65,8 +93,13 @@ test("dashboard fixture renders all mirrors locally with masking and key numbers
   assert.match(html, />Doctor</);
   assert.match(html, />Wallet</);
   assert.match(html, />Audit</);
+  assert.match(html, />Delivery</);
   assert.match(html, />Cognition</);
   assert.match(html, /Coming soon/);
+  assert.match(html, /Delivery trust score/);
+  assert.match(html, />75%</);
+  assert.match(html, /3 of 4 sessions that changed files ended with a passing check\./);
+  assert.match(html, /delivery\.claim_after_failed_check/);
   assert.match(html, /1 matched/);
   assert.match(html, /\$42\.75/);
   assert.match(html, />1<\/span><small>Critical/);

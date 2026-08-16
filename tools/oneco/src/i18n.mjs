@@ -7,6 +7,7 @@ export const strings = Object.freeze({
     "mirror.doctor": "Doctor",
     "mirror.wallet": "Wallet",
     "mirror.audit": "Audit",
+    "mirror.delivery": "Delivery",
     "mirror.cognition": "Cognition",
     "help.text": `SoloUnit — private mirrors for agent power-users
 
@@ -15,6 +16,7 @@ Usage:
   solounit audit [--json]
   solounit wallet [--days 30] [--agent claude|codex] [--json]
   solounit wallet [--days 30] [--agent claude|codex] --html [path]
+  solounit delivery [--days 30] [--agent claude|codex] [--json]
   solounit dashboard [--out path] [--open]
   solounit graft [--days 30] [--agent claude|codex] [--debug]
   solounit sync [--url http://localhost:8787]
@@ -26,11 +28,12 @@ Commands:
   doctor  Match this environment against bundled and cached advisories offline.
   audit   Review local agent access, hooks, credentials, and permissions offline.
   wallet  Report API-equivalent agent usage and potential savings from local logs.
+  delivery  Report whether the work your agent said it finished was ever verified.
   dashboard  Render all local mirrors as a self-contained visual health panel.
-  graft   Run doctor, wallet, and audit together for the first-run experience.
+  graft   Run doctor, wallet, audit, and delivery together for the first-run experience.
   sync    Explicitly fetch advisories and update the local cache.
 
-Trust: only an explicit sync command can use the network. Doctor, audit, wallet, dashboard, and graft stay offline.
+Trust: only an explicit sync command can use the network. Doctor, audit, wallet, delivery, dashboard, and graft stay offline.
 `,
     "cli.langInvalid": "--lang must be en or zh",
     "cli.htmlPathEmpty": "--html path cannot be empty",
@@ -53,6 +56,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "graft.doctorError": "Doctor could not inspect your environment: {reason}. Run `solounit doctor` for details.",
     "graft.walletError": "Wallet could not read your logs: {reason}. Run `solounit wallet` for details.",
     "graft.auditError": "Audit could not inspect your local configuration: {reason}. Run `solounit audit` for details.",
+    "graft.deliveryError": "Delivery could not review your sessions: {reason}. Run `solounit delivery` for details.",
     "graft.unknownError": "unknown internal error",
     "graft.none": "none",
     "graft.debug": "[debug] {mirror}: directories checked: {directories}; files found: {files}; lines parsed: {parsed}; lines skipped: {skipped}.",
@@ -192,6 +196,50 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "audit.failedWhere": "documented local audit locations",
     "audit.failedWhy": "An internal failure prevented a complete access review.",
     "audit.failedFix": "Retry the command; if it repeats, inspect the local SoloUnit installation.",
+    "delivery.localReport": "Local-only delivery report — commands, transcript text, and session ids are never printed.",
+    "delivery.periodSummary": "Last {days} day(s): {sessions} sessions, {edits} file edits, {checks} verification runs.",
+    "delivery.score": "Delivery trust score: {score}% — {verified} of {sessions} sessions that changed files ended with a passing check.",
+    "delivery.noDeliveries": "Reviewed {sessions} sessions; none of them changed files, so there was nothing to verify.",
+    "delivery.noSessionsAtPaths": "Checked these paths: {paths}. Found no session logs there.",
+    "delivery.noSessions": "No local session logs were found.",
+    "delivery.severity.critical": "CRITICAL",
+    "delivery.severity.warning": "WARNING",
+    "delivery.severity.info": "INFO",
+    "delivery.where": "Where: {where}",
+    "delivery.why": "Why: {why}",
+    "delivery.fix": "Fix: {fix}",
+    "delivery.whereSession": "1 session ({refs})",
+    "delivery.whereSessions": "{count} sessions ({refs})",
+    "delivery.refsMore": "{refs}, +{more} more",
+    "delivery.listSeparator": ", ",
+    "delivery.listFinal": " and ",
+    "delivery.checksHeading": "Checks seen, by runner:",
+    "delivery.checkRow": "{runner}: {runs} run(s) — {passed} passed, {failed} failed",
+    "delivery.estimateNote": "Claims and checks are matched by pattern, not proved: a private script this mirror does not recognize reads as no check at all.",
+    "delivery.error": "The local delivery report could not be completed.",
+    "delivery.suppression.no-verify": "hook bypass (--no-verify)",
+    "delivery.suppression.no-tests": "an empty test run treated as success",
+    "delivery.suppression.swallowed-failure": "a check failure swallowed by `|| true`",
+    "delivery.suppression.skipped-test": "a test skipped or ignored",
+    "delivery.suppression.focused-test": "a focused test that silences the rest of the suite",
+    "delivery.claim_after_failed_check.what": "The agent reported success right after a check failed",
+    "delivery.claim_after_failed_check.why": "The most recent verification before that claim had failed and nothing passed in between, so the claim was never backed by a green run.",
+    "delivery.claim_after_failed_check.fix": "Re-run the failing check yourself before trusting what these sessions left behind.",
+    "delivery.verification_suppressed.what": "Verification was disabled or its failure was swallowed",
+    "delivery.verification_suppressed.why": "These sessions contain {kinds}, so a green result no longer means the suite actually ran.",
+    "delivery.verification_suppressed.fix": "Restore the suppressed checks and run them again before shipping this work.",
+    "delivery.edits_never_checked.what": "Files changed with no verification run at all",
+    "delivery.edits_never_checked.why": "{edits} file edits landed in these sessions and no test, lint, typecheck, or build command followed.",
+    "delivery.edits_never_checked.fix": "Run this project's own checks over the changed files before relying on them.",
+    "delivery.stale_verification.what": "The last edit landed after the last passing check",
+    "delivery.stale_verification.why": "The green run these sessions ended on does not cover the final state of the files.",
+    "delivery.stale_verification.fix": "Re-run the checks now that the editing has stopped.",
+    "delivery.unresolved_failure.what": "Sessions ended on a failing check",
+    "delivery.unresolved_failure.why": "The last verification failed and no later run passed, so the work was left red.",
+    "delivery.unresolved_failure.fix": "Re-open the failure and drive it to green, or revert the change.",
+    "delivery.verified.what": "Work verified before the session ended",
+    "delivery.verified.why": "A check passed after the last file edit, so what the agent left behind was actually exercised.",
+    "delivery.verified.fix": "No action needed — this is the outcome every other finding here is measured against.",
     "dashboard.unknownTime": "Unknown time",
     "dashboard.noFixSteps": "No fix steps supplied.",
     "dashboard.advisory": "Advisory",
@@ -224,6 +272,17 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "dashboard.critical": "Critical",
     "dashboard.warning": "Warning",
     "dashboard.info": "Info",
+    "dashboard.deliveryTrust": "Delivery trust",
+    "dashboard.deliveryScore": "{score}% verified",
+    "dashboard.deliveryScoreLabel": "Delivery trust score",
+    "dashboard.deliveryVerifiedOf": "{verified} of {sessions} sessions that changed files ended with a passing check.",
+    "dashboard.deliveryNoScore": "No session changed files in this window.",
+    "dashboard.deliveryNoData": "No local session logs were found.",
+    "dashboard.deliveryEdits": "File edits",
+    "dashboard.deliveryChecks": "Checks run",
+    "dashboard.deliveryClaims": "Completion claims",
+    "dashboard.deliveryClear": "Nothing unverified — every session that changed files ended green.",
+    "dashboard.deliveryFinding": "Local delivery finding",
     "dashboard.thinkingPatterns": "Thinking patterns",
     "dashboard.comingSoon": "Coming soon",
     "dashboard.cognitionPlaceholder": "The cognition mirror is not implemented yet. This space is reserved for its local summary.",
@@ -240,6 +299,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "mirror.doctor": "修理镜 · Doctor",
     "mirror.wallet": "钱包镜 · Wallet",
     "mirror.audit": "安全镜 · Audit",
+    "mirror.delivery": "交付镜 · Delivery",
     "mirror.cognition": "认知镜 · Cognition",
     "help.text": `SoloUnit — 面向智能体高级用户的隐私镜像
 
@@ -248,6 +308,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
   solounit audit [--json]
   solounit wallet [--days 30] [--agent claude|codex] [--json]
   solounit wallet [--days 30] [--agent claude|codex] --html [path]
+  solounit delivery [--days 30] [--agent claude|codex] [--json]
   solounit dashboard [--out path] [--open]
   solounit graft [--days 30] [--agent claude|codex] [--debug]
   solounit sync [--url http://localhost:8787]
@@ -259,11 +320,12 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
   doctor  离线将当前环境与内置及缓存的建议进行匹配。
   audit   离线检查本地智能体访问、钩子、凭据和权限。
   wallet  基于本地日志报告智能体的 API 等效用量和潜在节省。
+  delivery  报告智能体声称完成的工作到底有没有被验证过。
   dashboard  将所有本地镜像渲染为独立的可视化健康面板。
-  graft   为首次使用同时运行修理镜、钱包镜和安全镜。
+  graft   为首次使用同时运行修理镜、钱包镜、安全镜和交付镜。
   sync    显式获取建议并更新本地缓存。
 
-信任说明：只有显式执行 sync 命令才会使用网络。修理镜、安全镜、钱包镜、面板和 graft 始终离线运行。
+信任说明：只有显式执行 sync 命令才会使用网络。修理镜、安全镜、钱包镜、交付镜、面板和 graft 始终离线运行。
 `,
     "cli.langInvalid": "--lang 必须是 en 或 zh",
     "cli.htmlPathEmpty": "--html 路径不能为空",
@@ -286,6 +348,7 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "graft.doctorError": "修理镜无法检查你的环境：{reason}。运行 `solounit doctor` 查看详情。",
     "graft.walletError": "钱包镜无法读取本地日志：{reason}。运行 `solounit wallet` 查看详情。",
     "graft.auditError": "安全镜无法检查本地配置：{reason}。运行 `solounit audit` 查看详情。",
+    "graft.deliveryError": "交付镜无法审查你的会话：{reason}。运行 `solounit delivery` 查看详情。",
     "graft.unknownError": "未知内部错误",
     "graft.none": "无",
     "graft.debug": "[调试] {mirror}：已检查目录：{directories}；找到文件：{files}；已解析行：{parsed}；已跳过行：{skipped}。",
@@ -425,6 +488,50 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "audit.failedWhere": "已记录的本地安全审核位置",
     "audit.failedWhy": "内部故障导致无法完成全面访问审查。",
     "audit.failedFix": "重试该命令；如果问题重复出现，请检查本地 SoloUnit 安装。",
+    "delivery.localReport": "仅本地交付报告 — 绝不打印命令、对话内容或会话 ID。",
+    "delivery.periodSummary": "过去 {days} 天：{sessions} 个会话、{edits} 次文件修改、{checks} 次验证运行。",
+    "delivery.score": "交付信任分：{score}% — 在修改了文件的 {sessions} 个会话中，有 {verified} 个以通过的检查收尾。",
+    "delivery.noDeliveries": "检查了 {sessions} 个会话；它们都没有修改文件，因此没有需要验证的交付。",
+    "delivery.noSessionsAtPaths": "已检查这些路径：{paths}。其中未找到会话日志。",
+    "delivery.noSessions": "未找到本地会话日志。",
+    "delivery.severity.critical": "严重",
+    "delivery.severity.warning": "警告",
+    "delivery.severity.info": "信息",
+    "delivery.where": "位置：{where}",
+    "delivery.why": "原因：{why}",
+    "delivery.fix": "修复：{fix}",
+    "delivery.whereSession": "1 个会话（{refs}）",
+    "delivery.whereSessions": "{count} 个会话（{refs}）",
+    "delivery.refsMore": "{refs}，另有 {more} 个",
+    "delivery.listSeparator": "、",
+    "delivery.listFinal": "，以及",
+    "delivery.checksHeading": "检查运行情况（按命令）：",
+    "delivery.checkRow": "{runner}：运行 {runs} 次 — {passed} 次通过，{failed} 次失败",
+    "delivery.estimateNote": "「声称完成」和「检查」都是按模式匹配识别的，不是证明：本镜像不认识的私有脚本会被当作根本没做过检查。",
+    "delivery.error": "无法完成本地交付报告。",
+    "delivery.suppression.no-verify": "绕过钩子（--no-verify）",
+    "delivery.suppression.no-tests": "把空测试运行当作成功",
+    "delivery.suppression.swallowed-failure": "用 `|| true` 吞掉了检查失败",
+    "delivery.suppression.skipped-test": "测试被跳过或忽略",
+    "delivery.suppression.focused-test": "只跑单个测试，其余用例被静默跳过",
+    "delivery.claim_after_failed_check.what": "检查失败之后，智能体立刻声称已经完成",
+    "delivery.claim_after_failed_check.why": "在那句「完成」之前最近一次验证是失败的，中间也没有任何一次通过，所以这个说法从未被绿色结果支撑。",
+    "delivery.claim_after_failed_check.fix": "在相信这些会话留下的结果之前，自己把失败的检查重跑一遍。",
+    "delivery.verification_suppressed.what": "验证被禁用，或者失败被吞掉了",
+    "delivery.verification_suppressed.why": "这些会话中出现了{kinds}，此时「通过」已经不再意味着测试真的跑过。",
+    "delivery.verification_suppressed.fix": "恢复被压制的检查并重新运行，然后再交付这部分工作。",
+    "delivery.edits_never_checked.what": "改了文件，却完全没有跑过验证",
+    "delivery.edits_never_checked.why": "这些会话里落地了 {edits} 次文件修改，之后没有运行任何测试、lint、类型检查或构建命令。",
+    "delivery.edits_never_checked.fix": "在依赖这些改动之前，用项目自己的检查命令跑一遍改动的文件。",
+    "delivery.stale_verification.what": "最后一次修改发生在最后一次通过的检查之后",
+    "delivery.stale_verification.why": "这些会话收尾时的那次绿色运行，并不覆盖文件的最终状态。",
+    "delivery.stale_verification.fix": "既然已经停止修改，就重新跑一遍检查。",
+    "delivery.unresolved_failure.what": "会话在检查失败的状态下结束",
+    "delivery.unresolved_failure.why": "最后一次验证失败了，之后也没有任何一次通过，工作是红着留下的。",
+    "delivery.unresolved_failure.fix": "重新处理这个失败直到变绿，或者回滚这次改动。",
+    "delivery.verified.what": "会话结束前，工作已经过验证",
+    "delivery.verified.why": "在最后一次文件修改之后有检查通过，说明智能体留下的东西确实被实际运行过。",
+    "delivery.verified.fix": "无需处理 — 这里其他所有发现，都是以这个结果为标尺来衡量的。",
     "dashboard.unknownTime": "未知时间",
     "dashboard.noFixSteps": "未提供修复步骤。",
     "dashboard.advisory": "建议",
@@ -457,6 +564,17 @@ Trust: only an explicit sync command can use the network. Doctor, audit, wallet,
     "dashboard.critical": "严重",
     "dashboard.warning": "警告",
     "dashboard.info": "信息",
+    "dashboard.deliveryTrust": "交付信任",
+    "dashboard.deliveryScore": "{score}% 已验证",
+    "dashboard.deliveryScoreLabel": "交付信任分",
+    "dashboard.deliveryVerifiedOf": "在修改了文件的 {sessions} 个会话中，有 {verified} 个以通过的检查收尾。",
+    "dashboard.deliveryNoScore": "此时间窗内没有任何会话修改过文件。",
+    "dashboard.deliveryNoData": "未找到本地会话日志。",
+    "dashboard.deliveryEdits": "文件修改",
+    "dashboard.deliveryChecks": "检查运行",
+    "dashboard.deliveryClaims": "声称完成",
+    "dashboard.deliveryClear": "没有未验证的交付 — 每个修改过文件的会话都以绿色收尾。",
+    "dashboard.deliveryFinding": "本地交付发现",
     "dashboard.thinkingPatterns": "思考模式",
     "dashboard.comingSoon": "即将推出",
     "dashboard.cognitionPlaceholder": "认知镜尚未实现。此区域为其本地摘要预留。",

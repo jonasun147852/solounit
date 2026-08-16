@@ -1,6 +1,7 @@
 import "./audit.test.mjs";
 import "./cli.test.mjs";
 import "./dashboard.test.mjs";
+import "./delivery.test.mjs";
 import "./doctor.test.mjs";
 import "./i18n.test.mjs";
 import "./hook.test.mjs";

@@ -4,11 +4,12 @@
 
 **When your agent acts up, run solounit first.**
 
-SoloUnit is a dependency-free CLI with three offline mirrors and a local visual dashboard for Claude Code and Codex power-users:
+SoloUnit is a dependency-free CLI with four offline mirrors and a local visual dashboard for Claude Code and Codex power-users:
 
 - **Doctor（修理镜）** compares a local environment fingerprint with bundled, git-versioned advisories.
 - **Audit（安全镜）** reviews granted agent access, hooks, credential exposure, permissions, and local integration names.
 - **Wallet（钱包镜）** turns local Claude Code and Codex usage records into an API-equivalent usage and potential-savings report.
+- **Delivery（交付镜）** reads the same session logs to answer whether the work the agent said it finished was ever verified.
 
 Advisory updates are an explicit, separate action. Only `solounit sync` may use the network; the mirrors never do.
 
@@ -43,6 +44,10 @@ solounit wallet --days 30 --json
 solounit wallet --agent codex
 solounit wallet --html
 solounit wallet --days 7 --html ./wallet-card.html
+solounit delivery
+solounit delivery --days 7
+solounit delivery --agent codex
+solounit delivery --json
 solounit dashboard
 solounit dashboard --out ./solounit-panel.html
 solounit dashboard --open
@@ -57,7 +62,7 @@ claude plugin marketplace add jonasun147852/solounit
 claude plugin install solounit@solounit
 ```
 
-Slash commands: `/solounit:graft` · `/solounit:doctor` · `/solounit:wallet` · `/solounit:sync`
+Slash commands: `/solounit:graft` · `/solounit:doctor` · `/solounit:wallet` · `/solounit:delivery` · `/solounit:sync`
 
 `doctor` proactively reports only environment-state advisories that match the installed tool, version range, and every required fingerprint dimension. Event-triggered advisories are excluded from doctor and can surface only when the plugin hook sees one of their literal signals in live failure content. A doctor report always exits with status 0 because it is a mirror, not a CI gate. Draft entries are labeled for operator review and cite scrubbed evidence or their source issue.
 
@@ -85,15 +90,23 @@ The headline is **API-equivalent usage**, not an estimated bill: “What this us
 
 `solounit wallet --html [path]` writes a self-contained share card with inline CSS and no scripts or external requests. The default path is `~/.oneco/wallet-card.html`; the CLI prints the completed path. The card contains only aggregate numbers and model names—never transcript content, file paths, or session names. Like the terminal and JSON wallet modes, HTML generation is entirely local.
 
-`solounit dashboard [--out PATH] [--open]` runs Doctor, Wallet, and Audit in-process and writes a self-contained visual health panel. Until a cognition mirror exists, its fourth card is clearly labeled “Coming soon.” The default path is `~/.oneco/dashboard.html`; `--out` selects another local path, and `--open` launches the completed file in the OS default browser without shell interpolation.
+`delivery` answers the question the other mirrors do not: the agent said it was done — was that true? It replays each local session in order and extracts four kinds of event: file edits (`Write`, `Edit`, `MultiEdit`, `NotebookEdit`, `apply_patch`), verification commands matched against a curated runner table and classified test/lint/typecheck/build, completion claims in assistant prose (en and zh), and suppressions such as `--no-verify`, `--passWithNoTests`, `|| true` after a check, `it.skip(`, `@pytest.mark.skip`, `#[ignore]`, and focused `.only(` tests. Pass or fail comes from the tool result: `is_error`, an `exit code N` line, or Codex's `metadata.exit_code`.
+
+A session counts as verified when a check passes strictly after its last edit. The headline **delivery trust score** is verified sessions divided by sessions that changed files; it is `null`, never `0`, when nothing changed files. Findings share the audit mirror's `severity`/`id`/`what`/`where`/`why`/`fix` shape: `claim_after_failed_check` and `verification_suppressed` are critical, `edits_never_checked`, `stale_verification`, and `unresolved_failure` are warnings, and `verified` is reported as info so the good outcome is stated out loud.
+
+Delivery emits strictly less than it reads. Only the matched runner prefix is printed — `npm test`, never the argv you typed. Claims are counted, never quoted. Session identifiers are replaced by the first eight hex characters of their SHA-256, because a Codex session id falls back to a file path. Like every other mirror it exits 0 and makes no network request.
+
+Claims and checks are pattern matches, not proofs. A private verification script this mirror does not recognize reads as no check at all, which is why the report always prints what it did recognize.
+
+`solounit dashboard [--out PATH] [--open]` runs Doctor, Wallet, Audit, and Delivery in-process and writes a self-contained visual health panel. Until a cognition mirror exists, a fifth full-width card is clearly labeled “Coming soon.” The default path is `~/.oneco/dashboard.html`; `--out` selects another local path, and `--open` launches the completed file in the OS default browser without shell interpolation.
 
 The dashboard is fully local: its HTML has inline CSS, no scripts, no links, no web fonts, and zero external requests. It renders Audit's already-masked findings and applies the same credential-redaction boundary once more before writing the file. It never re-reads raw secret values.
 
-`graft` runs Doctor, Wallet, and Audit as isolated first-run sections. If one mirror fails, its section prints a one-line reason and the other mirrors still run; these report failures keep exit status 0. Empty sections name what was scanned. `graft --debug` also prints each mirror's checked directories, files found, lines parsed, and lines skipped. When Audit has findings, graft points to `solounit audit` for detail, then closes with `solounit dashboard --open` for the visual panel.
+`graft` runs Doctor, Wallet, Audit, and Delivery as isolated first-run sections. If one mirror fails, its section prints a one-line reason and the other mirrors still run; these report failures keep exit status 0. Empty sections name what was scanned. `graft --debug` also prints each mirror's checked directories, files found, lines parsed, and lines skipped. When Audit has findings, graft points to `solounit audit` for detail, then closes with `solounit dashboard --open` for the visual panel.
 
 ## Privacy and network guarantee
 
-`doctor`, `audit`, `wallet`, `dashboard`, and `graft` are 100% offline, including when no advisory cache exists:
+`doctor`, `audit`, `wallet`, `delivery`, `dashboard`, and `graft` are 100% offline, including when no advisory cache exists:
 
 - They do not use network APIs, sockets, telemetry, DNS lookups, or update checks.
 - No transcript, configuration, fingerprint, token count, or report leaves the machine.
@@ -128,7 +141,7 @@ Audit tolerates every file being absent or malformed and checks only:
 
 The audit scan never searches the full filesystem, plugin payload directories, repository contents, or transcript files.
 
-Wallet recursively reads `*.jsonl` files under `~/.claude/projects/`, including nested subagent and workflow transcripts. It also reads only `rollout-*.jsonl` under `~/.codex/sessions/` and `~/.codex/archived_sessions/`. Synthetic test fixtures live under `tests/fixtures/` and `tests/fixtures-codex/`; real transcripts are never copied into this repository.
+Wallet recursively reads `*.jsonl` files under `~/.claude/projects/`, including nested subagent and workflow transcripts. It also reads only `rollout-*.jsonl` under `~/.codex/sessions/` and `~/.codex/archived_sessions/`. Delivery reads exactly the same files, read-only, and adds no new location. Synthetic test fixtures live under `tests/fixtures/`, `tests/fixtures-codex/`, and `tests/fixtures-delivery/`; real transcripts are never copied into this repository.
 
 ## Observed transcript format
 

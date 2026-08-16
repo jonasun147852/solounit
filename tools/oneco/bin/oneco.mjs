@@ -4,6 +4,7 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createAuditReport, redactCredentialValues, runAudit } from "../src/audit.mjs";
 import { runDashboard } from "../src/dashboard.mjs";
+import { createDeliveryReport, renderDelivery, runDelivery } from "../src/delivery.mjs";
 import { createDoctorReport, renderDoctor, runDoctor } from "../src/doctor.mjs";
 import { resolveLocale, setLocale, stripLocaleArgs, t } from "../src/i18n.mjs";
 import { runSync } from "../src/sync.mjs";
@@ -190,6 +191,19 @@ export async function main(args = process.argv.slice(2), runtime = {}) {
       return 0;
     }
 
+    if (command === "delivery") {
+      const options = parseOptions(commandArgs, new Set(["json", "days", "agent"]), locale);
+      await runDelivery({
+        ...runtime.deliveryOptions,
+        json: options.json,
+        days: options.days,
+        agent: options.agent ?? runtime.deliveryOptions?.agent,
+        output,
+        locale,
+      });
+      return 0;
+    }
+
     if (command === "dashboard") {
       const options = parseOptions(commandArgs, new Set(["out", "open"]), locale);
       await runDashboard({
@@ -197,6 +211,7 @@ export async function main(args = process.argv.slice(2), runtime = {}) {
         doctorOptions: runtime.dashboardOptions?.doctorOptions || runtime.doctorOptions,
         walletOptions: runtime.dashboardOptions?.walletOptions || runtime.walletOptions,
         auditOptions: runtime.dashboardOptions?.auditOptions || runtime.auditOptions,
+        deliveryOptions: runtime.dashboardOptions?.deliveryOptions || runtime.deliveryOptions,
         out: options.out,
         open: options.open,
         output,
@@ -297,6 +312,29 @@ export async function main(args = process.argv.slice(2), runtime = {}) {
       if (options.debug) {
         output.write(`${graftDebugLine(t("mirror.audit", { locale }), audit, locale)}\n`);
       }
+
+      output.write("\n");
+      let delivery = null;
+      try {
+        delivery = await createDeliveryReport({
+          ...runtime.deliveryOptions,
+          days: options.days,
+          agent: options.agent ?? runtime.deliveryOptions?.agent,
+          locale,
+        });
+        output.write(`${renderDelivery(delivery, locale)}\n`);
+      } catch (error) {
+        output.write(
+          `${t("mirror.delivery", { locale })}\n${t("graft.deliveryError", {
+            locale,
+            reason: oneLineReason(error, locale),
+          })}\n`,
+        );
+      }
+      if (options.debug) {
+        output.write(`${graftDebugLine(t("mirror.delivery", { locale }), delivery, locale)}\n`);
+      }
+
       output.write(`\n${t("graft.dashboardPrompt", { locale })}\n`);
       return 0;
     }
