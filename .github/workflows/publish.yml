@@ -4,22 +4,42 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
+  # Release path: only runs for a pushed v* tag. Steps are the trusted-publishing
+  # switch (no long-lived registry token; OIDC identity via --provenance).
   publish:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false
       - run: node --test tools/oneco/tests/
+      - name: Verify npm trusted publisher
+        run: scripts/preflight-publish.sh
       - run: npm publish --provenance --access public
         working-directory: tools/oneco
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # Dry-run path: manual dispatch only. Proves the GitHub->npm OIDC exchange for
+  # this repo/workflow and stops. There is deliberately no publish step here.
+  preflight-only:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - name: Verify npm trusted publisher (no publish)
+        run: scripts/preflight-publish.sh
