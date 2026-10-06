@@ -108,10 +108,18 @@ function localizedBucketLabel(bucket, locale) {
   return key ? t(key, { locale }) : bucket?.label || bucket?.key || t("dashboard.estimate", { locale });
 }
 
+function tokensOf(breakdown) {
+  const models = Array.isArray(breakdown?.spend_by_model) ? breakdown.spend_by_model : [];
+  return models.reduce((sum, model) => sum + (Number(model.total_tokens) || 0), 0);
+}
+
 function walletCard(report, locale) {
   const total = Number(report?.summary?.total_spend_usd) || 0;
   const agents = Array.isArray(report?.by_agent) ? report.by_agent : [];
   const multiAgent = agents.length > 1;
+  const tokenTotal = multiAgent
+    ? agents.reduce((sum, agent) => sum + tokensOf(agent), 0)
+    : tokensOf(report);
   const modelRowsFor = (breakdown) => {
     const models = Array.isArray(breakdown?.spend_by_model) ? breakdown.spend_by_model : [];
     const breakdownTotal = Number(breakdown?.summary?.total_spend_usd) || 0;
@@ -120,10 +128,13 @@ function walletCard(report, locale) {
         .map((model) => {
           const value = model.priced === false ? t("dashboard.unpriced", { locale }) : dollars(model.spend_usd);
           const width = barWidth(model.spend_usd, breakdownTotal).toFixed(2);
+          const modelLabel = model.model || t("dashboard.unknownModel", { locale });
+          const tokenCount = (Number(model.total_tokens) || 0).toLocaleString("en-US");
+          const tokenSuffix = t("wallet.tokensSuffix", { locale, tokens: tokenCount });
           return `
             <div class="model-row">
-              <div class="row-meta"><span>${escapeHtml(model.model || t("dashboard.unknownModel", { locale }), locale)}</span><strong>${escapeHtml(value, locale)}</strong></div>
-              <div class="bar-track" role="img" aria-label="${escapeHtml(model.model || t("dashboard.unknownModel", { locale }), locale)}: ${escapeHtml(value, locale)}">
+              <div class="row-meta"><span>${escapeHtml(modelLabel, locale)} · ${escapeHtml(tokenSuffix, locale)}</span><strong>${escapeHtml(value, locale)}</strong></div>
+              <div class="bar-track" role="img" aria-label="${escapeHtml(modelLabel, locale)}: ${escapeHtml(value, locale)}">
                 <span class="bar-fill" style="width:${width}%"></span>
               </div>
             </div>`;
@@ -174,6 +185,7 @@ function walletCard(report, locale) {
       <div class="usage-hero">
         <span>${escapeHtml(t(multiAgent ? "wallet.combinedUsageLabel" : "wallet.usageLabel", { locale }), locale)}</span>
         <strong>${escapeHtml(dollars(total), locale)}</strong>
+        <p class="token-total">${escapeHtml(t("wallet.totalTokensLabel", { locale, tokens: tokenTotal.toLocaleString("en-US") }), locale)}</p>
         <p>${escapeHtml(t("wallet.usageExplainer", { locale }), locale)}</p>
       </div>
       <div class="wallet-sections">
@@ -377,6 +389,7 @@ export function renderDashboard(report, locale = report?.locale || "en") {
     .usage-hero > span { display: block; color: var(--muted); font-size: 0.7rem; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
     .usage-hero > strong { display: block; margin: 5px 0 7px; color: var(--green); font-size: clamp(2.8rem, 7vw, 4.2rem); letter-spacing: -0.065em; line-height: 1; }
     .usage-hero p { margin: 0; color: var(--muted); font-size: 0.72rem; }
+    .usage-hero p.token-total { margin-bottom: 4px; color: var(--text); font-weight: 650; font-variant-numeric: tabular-nums; }
     .wallet-sections { display: grid; gap: 22px; }
     .model-list, .waste-list { display: grid; gap: 11px; }
     .agent-breakdown { display: grid; gap: 11px; }
